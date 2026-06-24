@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-title" content="EverGlass Focus"/>
 <link rel="manifest" href="manifest.json"/>
+<link rel="apple-touch-icon" href="icons/icon-192.png"/>
+<link rel="icon" href="icons/icon-192.png"/>
 <title>EverGlass — Focus Journée</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
@@ -29,22 +31,22 @@ html[data-theme="light"]{
   --tint1:rgba(0,0,0,0.025);--tint2:rgba(0,0,0,0.04);--tint3:rgba(0,0,0,0.05);--tint4:rgba(0,0,0,0.07);
 }
 body{font-family:'Montserrat',sans-serif;color:var(--fg);background:var(--bg);}
-.theme-toggle{width:30px;height:30px;border-radius:50%;border:0.5px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.04);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#ccc;flex-shrink:0;padding:0;margin-left:10px;}
+.theme-toggle{width:30px;height:30px;border-radius:50%;border:0.5px solid var(--line2);background:var(--tint3);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--fg-dim2);flex-shrink:0;padding:0;margin-left:10px;}
 .theme-toggle svg{width:15px;height:15px;}
 .app{max-width:600px;margin:0 auto;min-height:100vh;padding-bottom:60px;}
 
-.header{background:var(--black);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--teal);position:sticky;top:0;z-index:100;}
+.header{background:var(--surface);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid var(--teal);position:sticky;top:0;z-index:100;}
 .brand{display:flex;align-items:center;gap:10px;}
 .brand-icon{width:32px;height:32px;border:1.5px solid var(--teal);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.brand-name{font-size:14px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#ffffff;}
+.brand-name{font-size:14px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-strong);}
 .brand-name span{color:var(--teal);}
-.brand-sub{font-size:8px;color:#888888;letter-spacing:.07em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:2px;}
-.header-date{font-size:10px;font-family:'DM Mono',monospace;color:#888888;text-align:right;}
-.header-date strong{display:block;font-size:11px;color:#cccccc;}
+.brand-sub{font-size:8px;color:var(--fg-dim);letter-spacing:.07em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:2px;}
+.header-date{font-size:10px;font-family:'DM Mono',monospace;color:var(--fg-dim);text-align:right;}
+.header-date strong{display:block;font-size:11px;color:var(--fg-dim2);}
 
 /* TABS */
-.tabbar{display:flex;background:var(--black);border-bottom:0.5px solid rgba(255,255,255,0.07);position:sticky;top:61px;z-index:99;}
-.tab-btn{flex:1;padding:11px 0;text-align:center;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:.05em;text-transform:uppercase;color:#888888;background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;}
+.tabbar{display:flex;background:var(--surface);border-bottom:0.5px solid var(--line);position:sticky;top:61px;z-index:99;}
+.tab-btn{flex:1;padding:11px 0;text-align:center;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-dim);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;}
 .tab-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
 .view{display:none;}
 .view.active{display:block;}
@@ -322,7 +324,7 @@ body{font-family:'Montserrat',sans-serif;color:var(--fg);background:var(--bg);}
 
     <div class="footer">
       <div id="sync-status" style="text-align:center;font-size:10px;font-family:'DM Mono',monospace;color:var(--fg-dim);margin-bottom:10px;">⚪ En attente de saisie</div>
-      <button class="reset-btn" style="background:var(--teal-dim);border-color:var(--teal-border);color:var(--teal);font-weight:700;margin-bottom:8px;" onclick="downloadPDF()">Télécharger ma fiche en PDF</button>
+      <button class="reset-btn" style="background:var(--teal-dim);border-color:var(--teal-border);color:var(--teal);font-weight:700;margin-bottom:8px;" onclick="downloadPDF(event)">Télécharger ma fiche en PDF</button>
       <button class="reset-btn" onclick="resetJournee()">Réinitialiser la journée</button>
     </div>
   </div>
@@ -375,6 +377,7 @@ body{font-family:'Montserrat',sans-serif;color:var(--fg);background:var(--bg);}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 const OBJ_BLEUS=5, OBJ_TOTAL=7, OBJ_VENUS_SEMAINE=20;
 const GROUPES=[
@@ -571,74 +574,37 @@ function resetJournee(){
 const DAYS_FULL=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const MONTHS_FULL=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
-function downloadPDF(){
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'pt', format:'a4' });
-  const commercial=document.getElementById('inp-commercial').value.trim() || 'Commercial';
-  const ville=document.getElementById('inp-ville').value.trim() || 'Ville';
-  const now=new Date();
-  const dayName=DAYS_FULL[now.getDay()];
-  const monthName=MONTHS_FULL[now.getMonth()];
-  const dateLabel=`${dayName} ${now.getDate()} ${monthName} ${now.getFullYear()}`;
+async function downloadPDF(evt){
+  const btn=evt && evt.currentTarget ? evt.currentTarget : null;
+  if(btn){ btn.textContent='Génération...'; btn.disabled=true; }
 
-  doc.setFillColor(10,10,10);
-  doc.rect(0,0,595,70,'F');
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(18);
-  doc.setFont(undefined,'bold');
-  doc.text('EverGlass — Focus Journée', 40, 38);
-  doc.setFont(undefined,'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(180,180,180);
-  doc.text('Fiche opérationnelle commerciale', 40, 55);
+  const target=document.getElementById('view-jour');
+  const footer=target.querySelector('.footer');
+  const originalDisplay=footer.style.display;
+  footer.style.display='none';
 
-  let y=100;
-  doc.setTextColor(20,20,20);
-  doc.setFontSize(11);
-  doc.setFont(undefined,'bold'); doc.text('Commercial :', 40, y); doc.setFont(undefined,'normal'); doc.text(commercial, 140, y); y+=18;
-  doc.setFont(undefined,'bold'); doc.text('Ville :', 40, y); doc.setFont(undefined,'normal'); doc.text(ville, 140, y); y+=18;
-  doc.setFont(undefined,'bold'); doc.text('Date :', 40, y); doc.setFont(undefined,'normal'); doc.text(dateLabel, 140, y); y+=34;
+  try{
+    const bgColor=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#111111';
+    const canvas=await html2canvas(target, { scale:2, backgroundColor:bgColor, useCORS:true });
 
-  const bleus=rdvList.filter(r=>r.type==='BLEU').length;
-  const marrons=rdvList.filter(r=>r.type==='MARRON').length;
-  const total=rdvList.length;
+    const { jsPDF } = window.jspdf;
+    const cssW=target.offsetWidth;
+    const cssH=target.offsetHeight;
+    const pdfW=cssW*0.75;
+    const pdfH=cssH*0.75;
+    const doc=new jsPDF({ unit:'pt', format:[pdfW, pdfH] });
+    const imgData=canvas.toDataURL('image/png');
+    doc.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
 
-  doc.setFontSize(13); doc.setFont(undefined,'bold'); doc.text('Résultats du jour', 40, y); y+=20;
-  doc.setFontSize(11); doc.setFont(undefined,'normal');
-  doc.text(`Bleus posés : ${bleus} / ${OBJ_BLEUS}`, 40, y); y+=16;
-  doc.text(`Marrons posés : ${marrons}`, 40, y); y+=16;
-  doc.text(`Total RDV : ${total} / ${OBJ_TOTAL}`, 40, y); y+=34;
-
-  doc.setFontSize(13); doc.setFont(undefined,'bold'); doc.text('Répartition par source', 40, y); y+=20;
-  doc.setFontSize(11); doc.setFont(undefined,'normal');
-  const counts={}; ALL_CANAUX.forEach(c=>counts[c]={b:0,m:0});
-  rdvList.forEach(r=>{ if(counts[r.canal]) counts[r.canal][r.type==='BLEU'?'b':'m']++; });
-  let any=false;
-  ALL_CANAUX.forEach(c=>{
-    const {b,m}=counts[c];
-    if(b>0 || m>0){
-      any=true;
-      doc.text(`${c} — ${b} bleu(s), ${m} marron(s)`, 50, y); y+=16;
-    }
-  });
-  if(!any){ doc.setTextColor(140,140,140); doc.text('Aucun RDV posé aujourd\u2019hui.', 50, y); doc.setTextColor(20,20,20); y+=16; }
-  y+=18;
-
-  const mid=Math.ceil(OBJ_BLEUS/2);
-  let statusLabel='Critique';
-  if(bleus>=OBJ_BLEUS) statusLabel='Objectif atteint';
-  else if(bleus>=mid) statusLabel='Dans les temps';
-  else if(bleus>=1) statusLabel='En retard';
-
-  doc.setFontSize(13); doc.setFont(undefined,'bold'); doc.text('Statut de fin de journée', 40, y); y+=20;
-  doc.setFontSize(11); doc.setFont(undefined,'normal');
-  doc.text(statusLabel, 40, y);
-
-  doc.setFontSize(8); doc.setTextColor(150,150,150);
-  doc.text('Généré automatiquement depuis EverGlass Focus', 40, 800);
-
-  const fileDate=`${dayName}_${now.getDate()}_${monthName}_${now.getFullYear()}`;
-  doc.save(`EverGlass_Focus_${fileDate}.pdf`);
+    const now=new Date();
+    const dayName=DAYS_FULL[now.getDay()];
+    const monthName=MONTHS_FULL[now.getMonth()];
+    const fileDate=`${dayName}_${now.getDate()}_${monthName}_${now.getFullYear()}`;
+    doc.save(`EverGlass_Focus_${fileDate}.pdf`);
+  } finally {
+    footer.style.display=originalDisplay;
+    if(btn){ btn.textContent='Télécharger ma fiche en PDF'; btn.disabled=false; }
+  }
 }
 
 let syncTimeout=null;
