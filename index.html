@@ -1003,7 +1003,7 @@
     justify-content: center;
   }
   #leadcat-qty-popup.open, #leadcat-ville-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
-  #links-popup {
+  #links-popup, #admin-avatar-popup {
     display: none;
     position: fixed;
     inset: 0;
@@ -1012,7 +1012,7 @@
     align-items: center;
     justify-content: center;
   }
-  #links-popup.open { display: flex; }
+  #links-popup.open, #admin-avatar-popup.open { display: flex; }
 
   /* ── CÉLÉBRATION OBJECTIF ATTEINT — BOOM + DRAGON + CONFETTIS ── */
   #goal-celebration {
@@ -1871,6 +1871,14 @@
       <button class="leadcat-btn green" onclick="addCommercialFromAdmin()">+ Ajouter</button>
     </div>
     <button class="leadcat-cancel" onclick="closeLinksPopup()">Fermer</button>
+  </div>
+</div>
+
+<div id="admin-avatar-popup" onclick="if(event.target.id==='admin-avatar-popup') closeAdminAvatarPicker()">
+  <div class="leadcat-box">
+    <h3>🎭 Changer l'avatar de <span id="admin-avatar-target-name"></span></h3>
+    <div id="admin-avatar-grid" class="avatar-grid"></div>
+    <button class="leadcat-cancel" onclick="closeAdminAvatarPicker()">Fermer</button>
   </div>
 </div>
 
@@ -4882,9 +4890,9 @@ function getAvatarForCommercial(name) {
 function pushToCloud(iso, entry) {
   if (!db || !currentIdentity || currentIdentity === '__admin__') return;
   db.collection('commerciaux').doc(currentIdentity).collection('jours').doc(iso).set(entry, { merge: true }).catch(() => {});
-  // MAJ profil (avatar + lastSeen) à chaque push
-  const avatar = getAvatarForCommercial(currentIdentity);
-  db.collection('commerciaux').doc(currentIdentity).set({ avatar, lastSeen: new Date().toISOString() }, { merge: true }).catch(() => {});
+  // MAJ "vu pour la dernière fois" — ne touche jamais au champ avatar
+  // (l'avatar n'est modifié que par un choix explicite, via selectAvatar / adminSelectAvatar)
+  db.collection('commerciaux').doc(currentIdentity).set({ lastSeen: new Date().toISOString() }, { merge: true }).catch(() => {});
 }
 
 // ── Identité & avatar ──
@@ -5397,9 +5405,30 @@ function renderLinksList() {
   html += names.map(c => {
     const link = getShareLink('commercial', c.name);
     const safeName = c.name.replace(/'/g, "\\'");
-    return `<div class="links-row"><b>${c.avatar} ${c.name}</b><div class="links-row-inputs"><input readonly value="${link}" onclick="this.select()"><button onclick="copyLink('${link}')">Copier</button><button onclick="deleteCommercial('${safeName}')" style="background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4);">✕</button></div></div>`;
+    return `<div class="links-row"><b><span onclick="openAdminAvatarPicker('${safeName}')" style="cursor:pointer;border-bottom:1px dashed var(--muted);padding-bottom:1px" title="Changer l'avatar">${c.avatar}</span> ${c.name}</b><div class="links-row-inputs"><input readonly value="${link}" onclick="this.select()"><button onclick="copyLink('${link}')">Copier</button><button onclick="deleteCommercial('${safeName}')" style="background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4);">✕</button></div></div>`;
   }).join('');
   el.innerHTML = html;
+}
+
+function openAdminAvatarPicker(name) {
+  document.getElementById('admin-avatar-target-name').textContent = name;
+  const grid = document.getElementById('admin-avatar-grid');
+  const avatars = ['🦁','🐯','🐻','🦊','🐺','🦝','🐮','🐸','🐧','🦅','🦉','🐬','🐙','🦋','🦄','🐲','🦈','🐨','🐼','🦓'];
+  grid.innerHTML = avatars.map(a => `<button class="avatar-btn" onclick="adminSelectAvatar('${name.replace(/'/g,"\\'")}','${a}')">${a}</button>`).join('');
+  document.getElementById('admin-avatar-popup').classList.add('open');
+}
+
+function closeAdminAvatarPicker() {
+  document.getElementById('admin-avatar-popup').classList.remove('open');
+}
+
+function adminSelectAvatar(name, avatar) {
+  upsertCommercialCloud(name, avatar, () => {
+    closeAdminAvatarPicker();
+    renderLinksList();
+    renderAdminPage();
+    showToast(`🎭 Avatar de ${name} mis à jour`);
+  });
 }
 
 function deleteCommercial(name) {
