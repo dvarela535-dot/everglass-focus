@@ -2587,9 +2587,11 @@ function buildGrid(items, gridId, villeEnabled) {
           <div class="counter-value" id="val-${item.key}">${state[item.key] || 0}</div>
           <button class="counter-btn plus" onclick="toggleLeadCatPopup()">+</button>
         </div>
-        <div class="leadcat-breakdown" id="leadcat-breakdown"></div>`;
+        <div class="leadcat-breakdown" id="leadcat-breakdown"></div>
+        <div id="leadcat-villes-breakdown"></div>`;
       grid.appendChild(card);
       renderLeadCatBreakdown();
+      renderLeadVillesBreakdown();
       return;
     }
 
@@ -2935,8 +2937,35 @@ function leadCatAddVille(villeId) {
   pendingLeadCategory = null;
 
   renderLeadCatBreakdown();
+  renderLeadVillesBreakdown();
   updateAll();
   saveStorage();
+}
+
+// Liste permanente "leads ajoutés par ville aujourd'hui", avec un − sur
+// chacune pour corriger directement une erreur de saisie, ville par ville.
+function renderLeadVillesBreakdown() {
+  const el = document.getElementById('leadcat-villes-breakdown');
+  if (!el) return;
+  const log = state.leads_appeles_log || [];
+  const counts = {};
+  log.forEach(e => {
+    const ville = typeof e === 'string' ? '__sans_ville__' : (e.ville || '__sans_ville__');
+    const count = typeof e === 'string' ? 1 : (e.count || 1);
+    counts[ville] = (counts[ville] || 0) + count;
+  });
+  const villeIds = Object.keys(counts).filter(id => counts[id] > 0);
+  if (!villeIds.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+    ${villeIds.map(id => {
+      const label = id === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === id) || {}).label || id);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:6px 10px;font-size:12px">
+        <span>📍 ${label} — <b>${counts[id]}</b></span>
+        <button class="counter-btn minus" style="width:24px;height:24px;font-size:13px" onclick="removeLastLeadForVilleOrUntagged('${id}')">−</button>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function leadCatRemove() {
@@ -3003,6 +3032,7 @@ function removeLastLeadForVilleOrUntagged(villeId) {
   if (cel) cel.textContent = state.leads_appeles;
 
   renderLeadCatBreakdown();
+  renderLeadVillesBreakdown();
   renderACLeadsVilles();
   updateAll();
   saveStorage();
@@ -3261,6 +3291,7 @@ function updateAll() {
   if (tcEl) tcEl.textContent = tc;
   updatePerfStats(rdv);
   renderLeadCatBreakdown();
+  renderLeadVillesBreakdown();
   renderLeadsEntrantsFeedback();
   updateReactiviteBadge();
 }
@@ -4323,6 +4354,7 @@ function removeLastLeadForVille(villeId) {
   if (cel) cel.textContent = state.leads_appeles;
 
   renderLeadCatBreakdown();
+  renderLeadVillesBreakdown();
   renderACLeadsVilles();
   updateAll();
   saveStorage();
