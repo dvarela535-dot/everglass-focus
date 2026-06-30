@@ -993,7 +993,7 @@
     justify-content: center;
   }
   #rdvfixe-ville-popup.open { display: flex; }
-  #leadcat-qty-popup, #leadcat-ville-popup, #leadcat-remove-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup {
+  #leadcat-qty-popup, #leadcat-ville-popup, #leadcat-remove-popup, #lead-remove-cat-popup, #lead-remove-qty-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup {
     display: none;
     position: fixed;
     inset: 0;
@@ -1002,7 +1002,7 @@
     align-items: center;
     justify-content: center;
   }
-  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #leadcat-remove-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
+  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #leadcat-remove-popup.open, #lead-remove-cat-popup.open, #lead-remove-qty-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
   #links-popup, #admin-avatar-popup {
     display: none;
     position: fixed;
@@ -2222,6 +2222,27 @@
   </div>
 </div>
 
+<!-- LEAD APPELÉ — POPUP : quelle matière corriger pour cette ville ? -->
+<div id="lead-remove-cat-popup" onclick="if(event.target.id==='lead-remove-cat-popup') cancelLeadRemoveCategoryPopup()">
+  <div class="leadcat-box">
+    <h3 id="lead-remove-cat-title">Quelle matière corriger ?</h3>
+    <div class="leadcat-grid" id="lead-remove-cat-list" style="grid-template-columns:1fr;"></div>
+    <button class="leadcat-cancel" onclick="cancelLeadRemoveCategoryPopup()">Annuler</button>
+  </div>
+</div>
+
+<!-- LEAD APPELÉ — POPUP : combien retirer exactement pour cette ville/matière ? -->
+<div id="lead-remove-qty-popup" onclick="if(event.target.id==='lead-remove-qty-popup') cancelLeadRemoveQtyPopup()">
+  <div class="leadcat-box">
+    <h3 id="lead-remove-qty-title">Combien enlever ?</h3>
+    <input type="number" id="lead-remove-qty-input" value="1" min="1" style="width:100%;box-sizing:border-box;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:20px;text-align:center;margin-bottom:14px;" />
+    <div class="leadcat-grid" style="grid-template-columns:1fr;">
+      <button class="leadcat-btn red" onclick="confirmLeadRemoveQty()">Retirer</button>
+    </div>
+    <button class="leadcat-cancel" onclick="cancelLeadRemoveQtyPopup()">Annuler</button>
+  </div>
+</div>
+
 <!-- RDV FIXÉ — POPUP VILLE (étape 2) -->
 <div id="rdvfixe-ville-popup" onclick="if(event.target.id==='rdvfixe-ville-popup') cancelRdvVillePopup()">
   <div class="leadcat-box">
@@ -2962,10 +2983,119 @@ function renderLeadVillesBreakdown() {
       const label = id === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === id) || {}).label || id);
       return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:6px 10px;font-size:12px">
         <span>📍 ${label} — <b>${counts[id]}</b></span>
-        <button class="counter-btn minus" style="width:24px;height:24px;font-size:13px" onclick="removeLastLeadForVilleOrUntagged('${id}')">−</button>
+        <button class="counter-btn minus" style="width:24px;height:24px;font-size:13px" onclick="openLeadRemoveCategoryPopup('${id}')">−</button>
       </div>`;
     }).join('')}
   </div>`;
+}
+
+const LEAD_CAT_LABELS = { nouveau: 'Nouveau', aappeler: 'À appeler', stock: 'Stock', slack: 'Slack' };
+
+// Détail par catégorie (Nouveau / À appeler / Stock / Slack) pour une ville donnée
+function getCategoryBreakdownForVille(villeId) {
+  const log = state.leads_appeles_log || [];
+  const counts = { nouveau: 0, aappeler: 0, stock: 0, slack: 0 };
+  log.forEach(e => {
+    if (typeof e === 'string') return;
+    const ville = e.ville || '__sans_ville__';
+    if (ville !== villeId) return;
+    const cat = e.category;
+    const n = e.count || 1;
+    if (counts[cat] !== undefined) counts[cat] += n;
+  });
+  return counts;
+}
+
+let pendingRemoveVilleIdForCat = null;
+
+function openLeadRemoveCategoryPopup(villeId) {
+  pendingRemoveVilleIdForCat = villeId;
+  const label = villeId === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === villeId) || {}).label || villeId);
+  const titleEl = document.getElementById('lead-remove-cat-title');
+  if (titleEl) titleEl.textContent = `${label} — quelle matière corriger ?`;
+  const breakdown = getCategoryBreakdownForVille(villeId);
+  const list = document.getElementById('lead-remove-cat-list');
+  const cats = Object.keys(LEAD_CAT_LABELS).filter(c => breakdown[c] > 0);
+  if (!cats.length) { showToast('Aucun lead à enlever pour cette ville'); return; }
+  list.innerHTML = cats.map(c => `<button class="leadcat-btn red" onclick="cancelLeadRemoveCategoryPopup(); openLeadRemoveQtyPopup('${villeId}', '${c}', ${breakdown[c]})">${LEAD_CAT_LABELS[c]} <span style="opacity:0.7">(${breakdown[c]})</span></button>`).join('');
+  const pop = document.getElementById('lead-remove-cat-popup');
+  if (pop) pop.classList.add('open');
+}
+
+function cancelLeadRemoveCategoryPopup() {
+  const pop = document.getElementById('lead-remove-cat-popup');
+  if (pop) pop.classList.remove('open');
+}
+
+let pendingRemoveVilleId = null;
+let pendingRemoveCategory = null;
+let pendingRemoveVilleMax = 1;
+
+function openLeadRemoveQtyPopup(villeId, category, max) {
+  pendingRemoveVilleId = villeId;
+  pendingRemoveCategory = category;
+  pendingRemoveVilleMax = max;
+  const villeLabel = villeId === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === villeId) || {}).label || villeId);
+  const catLabel = LEAD_CAT_LABELS[category] || category;
+  const titleEl = document.getElementById('lead-remove-qty-title');
+  if (titleEl) titleEl.textContent = `${catLabel} — ${villeLabel} : combien enlever ? (max ${max})`;
+  const input = document.getElementById('lead-remove-qty-input');
+  if (input) { input.value = 1; input.max = max; input.min = 1; }
+  const pop = document.getElementById('lead-remove-qty-popup');
+  if (pop) pop.classList.add('open');
+}
+
+function cancelLeadRemoveQtyPopup() {
+  const pop = document.getElementById('lead-remove-qty-popup');
+  if (pop) pop.classList.remove('open');
+}
+
+// Retire EXACTEMENT le nombre demandé pour une ville donnée, en grignotant
+// les entrées du log les plus récentes en premier (en les réduisant ou en
+// les supprimant si besoin), sans jamais toucher aux autres villes.
+function confirmLeadRemoveQty() {
+  const villeId = pendingRemoveVilleId;
+  const category = pendingRemoveCategory;
+  if (!villeId || !category) return;
+  const input = document.getElementById('lead-remove-qty-input');
+  let qty = parseInt(input ? input.value : 1) || 0;
+  qty = Math.max(1, Math.min(qty, pendingRemoveVilleMax));
+
+  const log = state.leads_appeles_log || [];
+  let remaining = qty;
+  for (let i = log.length - 1; i >= 0 && remaining > 0; i--) {
+    const e = log[i];
+    if (typeof e === 'string') continue;
+    const ville = e.ville || '__sans_ville__';
+    if (ville !== villeId || e.category !== category) continue;
+    const count = e.count || 1;
+    if (count <= remaining) {
+      remaining -= count;
+      log.splice(i, 1);
+    } else {
+      e.count = count - remaining;
+      remaining = 0;
+    }
+  }
+  const removed = qty - remaining;
+
+  state.leads_appeles = Math.max(0, (state.leads_appeles || 0) - removed);
+  if (villeId !== '__sans_ville__') {
+    const lvKey = 'leadsville_' + villeId;
+    state[lvKey] = Math.max(0, (state[lvKey] || 0) - removed);
+  }
+
+  const val = document.getElementById('val-leads_appeles');
+  if (val) val.textContent = state.leads_appeles;
+  const cel = document.getElementById('callval-leads_appeles');
+  if (cel) cel.textContent = state.leads_appeles;
+
+  cancelLeadRemoveQtyPopup();
+  renderLeadCatBreakdown();
+  renderLeadVillesBreakdown();
+  updateAll();
+  saveStorage();
+  showToast(`↩ ${removed} lead(s) retiré(s)`);
 }
 
 function leadCatRemove() {
@@ -2981,16 +3111,16 @@ function leadCatRemove() {
   });
 
   const villeIds = Object.keys(villesAvecLeads);
-  // S'il n'y a qu'une seule ville concernée, pas besoin de demander : on enlève direct.
+  // S'il n'y a qu'une seule ville concernée, on saute direct à l'étape "quelle matière"
   if (villeIds.length === 1) {
-    removeLastLeadForVilleOrUntagged(villeIds[0]);
+    openLeadRemoveCategoryPopup(villeIds[0]);
     return;
   }
 
   const list = document.getElementById('leadcat-remove-ville-list');
   list.innerHTML = villeIds.map(id => {
     const label = id === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === id) || {}).label || id);
-    return `<button class="leadcat-btn red" onclick="removeLastLeadForVilleOrUntagged('${id}')">${label} <span style="opacity:0.7">(${villesAvecLeads[id]})</span></button>`;
+    return `<button class="leadcat-btn red" onclick="cancelLeadCatRemovePopup(); openLeadRemoveCategoryPopup('${id}')">${label} <span style="opacity:0.7">(${villesAvecLeads[id]})</span></button>`;
   }).join('');
   const pop = document.getElementById('leadcat-remove-popup');
   if (pop) pop.classList.add('open');
