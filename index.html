@@ -4962,6 +4962,14 @@ function selectIdentity(name) {
 
 function selectAvatar(name, avatar) {
   upsertCommercialCloud(name, avatar, () => {
+    // On met aussi à jour le cache local immédiatement, sinon le prochain
+    // pushToCloud (au premier clic) re-pousserait l'ancien avatar par-dessus.
+    const cached = getCommerciauxList();
+    const idx = cached.findIndex(c => c.name === name);
+    if (idx >= 0) cached[idx].avatar = avatar;
+    else cached.push({ name, avatar });
+    localStorage.setItem('eg_commerciaux', JSON.stringify(cached));
+
     localStorage.setItem('eg_avatar_chosen_' + name, '1'); // flag : avatar confirmé
     document.getElementById('avatar-picker').classList.add('hide');
     applyIdentity();
