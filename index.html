@@ -5063,29 +5063,36 @@ function logoutIdentity() {
   location.reload();
 }
 
-// Si ce téléphone n'a jamais stocké les données du jour pour ce commercial
-// (nouvel appareil, cache vidé...), on va les rechercher sur Firebase avant
-// d'afficher quoi que ce soit — sinon ça donne l'impression que tout a été supprimé
-// alors que les vraies données sont toujours là côté cloud.
+// Avant d'afficher quoi que ce soit, on compare les données locales de ce
+// téléphone avec celles du cloud pour aujourd'hui, et on garde la version
+// qui a le plus d'activité — ça évite qu'un état local vide ou périmé
+// (nouvel appareil, cache vidé, ancien bug...) écrase l'air de rien
+// des vraies données qui existent bien sur Firebase.
 function bootAppWithCloudSync() {
   if (currentIdentity && currentIdentity !== '__admin__' && db) {
-    const hasLocalToday = !!localStorage.getItem(lsKey('eg_state'));
-    if (!hasLocalToday) {
-      const todayIso = getTodayIso();
-      db.collection('commerciaux').doc(currentIdentity).collection('jours').doc(todayIso).get()
-        .then(doc => {
-          if (doc.exists) {
-            const data = doc.data();
-            if (data.state) localStorage.setItem(lsKey('eg_state'), JSON.stringify(data.state));
-            if (data.xp !== undefined) {
-              localStorage.setItem(lsKey('eg_xp'), JSON.stringify({ xp: data.xp, date: new Date().toDateString() }));
-            }
-          }
-        })
-        .catch(err => console.warn('pull cloud (today)', err))
-        .finally(() => bootApp());
-      return;
-    }
+    const todayIso = getTodayIso();
+    db.collection('commerciaux').doc(currentIdentity).collection('jours').doc(todayIso).get()
+      .then(doc => {
+        if (!doc.exists) return;
+        const data = doc.data();
+        if (!data.state) return;
+
+        const cloudScore = computeRdvTotal(data.state) + (data.xp || 0);
+
+        let localState = {};
+        try { localState = JSON.parse(localStorage.getItem(lsKey('eg_state')) || '{}'); } catch(e) {}
+        let localXp = 0;
+        try { localXp = JSON.parse(localStorage.getItem(lsKey('eg_xp')) || '{}').xp || 0; } catch(e) {}
+        const localScore = computeRdvTotal(localState) + localXp;
+
+        if (cloudScore > localScore) {
+          localStorage.setItem(lsKey('eg_state'), JSON.stringify(data.state));
+          localStorage.setItem(lsKey('eg_xp'), JSON.stringify({ xp: data.xp || 0, date: new Date().toDateString() }));
+        }
+      })
+      .catch(err => console.warn('pull cloud (today)', err))
+      .finally(() => bootApp());
+    return;
   }
   bootApp();
 }
