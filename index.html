@@ -977,7 +977,7 @@
     justify-content: center;
   }
   #rdvfixe-ville-popup.open { display: flex; }
-  #leadcat-qty-popup, #leadcat-ville-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup, #links-popup {
+  #leadcat-qty-popup, #leadcat-ville-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup {
     display: none;
     position: fixed;
     inset: 0;
@@ -986,7 +986,17 @@
     align-items: center;
     justify-content: center;
   }
-  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open, #links-popup.open { display: flex; }
+  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
+  #links-popup {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 1100;
+    align-items: center;
+    justify-content: center;
+  }
+  #links-popup.open { display: flex; }
 
   /* ── CÉLÉBRATION OBJECTIF ATTEINT — BOOM + DRAGON + CONFETTIS ── */
   #goal-celebration {
