@@ -463,7 +463,7 @@
   .nav-tab .tab-label { font-size: 8px; font-weight: 600; letter-spacing: 0.5px; }
   .nav-tab:hover { background: var(--surface2); border-color: var(--border); color: var(--text); }
   .nav-tab.active { background: rgba(0,212,255,0.1); border-color: var(--accent); color: var(--accent); box-shadow: var(--glow); }
-  .nav-tab.call-mode-btn { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--red); margin-top: auto; }
+  .nav-tab.call-mode-btn { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--red); }
   .nav-tab.call-mode-btn:hover, .nav-tab.call-mode-btn.active { background: rgba(239,68,68,0.2); border-color: var(--red); box-shadow: 0 0 20px rgba(239,68,68,0.3); }
 
   /* ── CONTENT AREA ── */
@@ -1854,14 +1854,14 @@
 
   <!-- NAV TABS -->
   <div class="nav-tabs">
+    <div class="nav-tab" data-page="appels" onclick="switchPage('appels', this)">📞<span class="tab-label">APP.</span></div>
+    <div class="nav-tab call-mode-btn" data-page="call" onclick="switchPage('call', this)">📱<span class="tab-label">APPEL</span></div>
     <div class="nav-tab active" data-page="conversion" onclick="switchPage('conversion', this)">🎯<span class="tab-label">CONV.</span></div>
     <div class="nav-tab" data-page="gestion" onclick="switchPage('gestion', this)">🔵<span class="tab-label">GEST.</span></div>
     <div class="nav-tab" data-page="facebook" onclick="switchPage('facebook', this)">💬<span class="tab-label">FB</span></div>
-    <div class="nav-tab" data-page="appels" onclick="switchPage('appels', this)">📞<span class="tab-label">APP.</span></div>
     <div class="nav-tab" data-page="remarques" onclick="switchPage('remarques', this)">⭐<span class="tab-label">NOTE</span></div>
     <div class="nav-tab" data-page="history" onclick="switchPage('history', this)">📅<span class="tab-label">HIST.</span></div>
     <div class="nav-tab" data-page="analyse" onclick="switchPage('analyse', this)">🧬<span class="tab-label">ANALYSE</span></div>
-    <div class="nav-tab call-mode-btn" data-page="call" onclick="switchPage('call', this)">📱<span class="tab-label">APPEL</span></div>
   </div>
 
   <!-- CONTENT -->
