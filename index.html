@@ -2083,6 +2083,7 @@
       </div>
 
       <div id="ac-profile"></div>
+      <div id="ac-flux"></div>
       <div id="ac-villes"></div>
       <div id="ac-leadsglobal"></div>
       <div id="ac-leadsvilles"></div>
@@ -2598,15 +2599,45 @@ function buildGrid(items, gridId, villeEnabled) {
     const plusAction = villeEnabled
       ? `openGenericVillePopup('${item.key}', ${item.xp})`
       : `change('${item.key}', 1, ${item.xp})`;
+    const minusAction = villeEnabled
+      ? `removeLastVilleAction('${item.key}', ${item.xp})`
+      : `change('${item.key}', -1, ${item.xp})`;
     card.innerHTML = `
       <div class="counter-label">${item.label}</div>
       <div class="counter-controls">
-        <button class="counter-btn minus" onclick="change('${item.key}', -1, ${item.xp})">−</button>
+        <button class="counter-btn minus" onclick="${minusAction}">−</button>
         <div class="counter-value" id="val-${item.key}">${state[item.key] || 0}</div>
         <button class="counter-btn plus" onclick="${plusAction}">+</button>
       </div>`;
     grid.appendChild(card);
   });
+}
+
+// Annule la DERNIÈRE action enregistrée pour cette clé (popup ville) :
+// retire l'entrée du log par ville ET décrémente le compteur de ville lié,
+// pour que le détail "par ville" reste toujours cohérent avec le total.
+function removeLastVilleAction(key, xpVal) {
+  if (currentIdentity === '__admin__' || fullViewTarget) { showToast('👁 Mode lecture seule'); return; }
+  if ((state[key] || 0) <= 0) return;
+  const log = state.generic_ville_log || [];
+  let lastEntry = null, lastIdx = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (log[i].key === key) { lastEntry = log[i]; lastIdx = i; break; }
+  }
+  if (lastIdx >= 0) log.splice(lastIdx, 1);
+
+  state[key] = Math.max(0, (state[key] || 0) - 1);
+
+  if (lastEntry && RDV_KEYS.includes(key) && lastEntry.ville) {
+    state['ville_' + lastEntry.ville] = Math.max(0, (state['ville_' + lastEntry.ville] || 0) - 1);
+    updateVillesTotal();
+    refreshVillesStats();
+  }
+
+  const el = document.getElementById('val-' + key);
+  if (el) el.textContent = state[key];
+  updateAll();
+  saveStorage();
 }
 
 function toggleLeadCatPopup() {
@@ -3998,6 +4029,7 @@ function computeStreak() {
 
 function renderAnalysePage() {
   renderACProfile();
+  renderACFlux();
   renderACVilles();
   renderACLeadsGlobal();
   renderACLeadsVilles();
@@ -4010,6 +4042,44 @@ function renderAnalysePage() {
   renderACResume();
   renderACEvaluation();
   renderACPolyvalence();
+}
+
+// ── Flux entrant (FB / Naturel) — info neutre, jamais un reproche ──
+// Ces sources dépendent du flux entrant (pub, bouche-à-oreille), pas du
+// travail du commercial. On informe juste qu'il n'y a rien eu, sans
+// jamais le mettre dans les "points à travailler" du commercial.
+function computeZeroStreak(key) {
+  const today = getCurrentDayEntry();
+  const history = getHistory().filter(h => h.iso !== today.iso);
+  const allDays = [today, ...history].filter(d => d.state);
+  let streak = 0;
+  for (const d of allDays) {
+    if ((d.state[key] || 0) > 0) break;
+    streak++;
+  }
+  return streak;
+}
+
+function renderACFlux() {
+  const el = document.getElementById('ac-flux');
+  if (!el) return;
+  const sources = [
+    { key: 'msg_fb_recu', label: 'Messenger', icon: '💬' },
+    { key: 'appel_naturel', label: 'Appel naturel', icon: '📞' },
+  ];
+  const rows = sources.map(s => ({ ...s, streak: computeZeroStreak(s.key) })).filter(s => s.streak >= 2);
+  if (!rows.length) return; // rien à signaler, on n'affiche rien
+  el.innerHTML = `
+    <div class="ac-card" style="border-left:3px solid var(--muted)">
+      <div class="ac-card-title">ℹ️ Flux entrant</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Info — ça ne dépend pas de toi, c'est juste pour suivre le flux.</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;background:var(--surface2);border-radius:8px;padding:8px 10px">
+          <span>${r.icon} ${r.label}</span>
+          <span style="color:var(--yellow);font-weight:700">${r.streak} jour(s) sans entrée</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 // ── 1. Carte profil ──────────────────────────────────────────
