@@ -1699,20 +1699,73 @@
   .ac-poly-row .ac-poly-bar-fill { height: 100%; background: var(--accent); border-radius: 5px; }
   /* ══════════════════ RESPONSIVE ══════════════════ */
 
-  /* Petits écrans (téléphones étroits) */
-  @media (max-width: 420px) {
-    .content { padding: 12px; }
-    .topbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
-    .nav-tabs { width: 58px; }
-    .nav-tab { width: 44px; height: 44px; font-size: 16px; }
+  /* Téléphones (jusqu'à ~640px) : nav en barre horizontale basse */
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 8px 10px;
+      flex-wrap: wrap;
+      row-gap: 6px;
+      justify-content: center;
+    }
+    .logo { font-size: 17px; order: 1; }
+    .date-info { order: 3; flex-basis: 100%; justify-content: center; gap: 6px; }
+    .date-info .day { font-size: 14px; }
+    .date-info .week { font-size: 10px; }
+    .day-nav-btn { width: 24px; height: 24px; font-size: 11px; }
+    .user-info { order: 2; margin-left: auto; gap: 6px; }
+    .user-badge { font-size: 11px; padding: 5px 10px; }
+    #theme-toggle { padding: 5px 9px !important; font-size: 13px !important; }
+
+    .main { flex-direction: column; height: calc(100vh - 124px); }
+    .nav-tabs {
+      width: 100%;
+      flex-direction: row;
+      order: 2;
+      border-right: none;
+      border-top: 1px solid var(--border);
+      padding: 6px 6px;
+      gap: 5px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      justify-content: flex-start;
+    }
+    .content { order: 1; padding: 12px; }
+    .nav-tab {
+      flex: 0 0 auto;
+      width: 54px;
+      height: 50px;
+      font-size: 16px;
+      scroll-snap-align: start;
+    }
     .nav-tab .tab-label { font-size: 7px; }
-    .main { height: calc(100vh - 130px); }
-    .leadcat-box, .identity-box { width: 92vw; max-width: 92vw; padding: 20px 16px; }
-    #week-modal .leadcat-box, #links-popup .leadcat-box { max-height: 85vh; overflow-y: auto; }
+
+    .leadcat-box, .identity-box { width: 92vw; max-width: 92vw; padding: 18px 14px; box-sizing: border-box; }
+    #week-modal .leadcat-box, #links-popup .leadcat-box { max-height: 82vh; overflow-y: auto; }
+    .links-row-inputs { flex-wrap: wrap; }
+    .links-row-inputs input { width: 100%; }
+
     .counter-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
     .bm-ville-grid { grid-template-columns: 1fr; }
     .admin-cards-grid { grid-template-columns: 1fr; }
     .perf-card, .ville-grid, .ac-records-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+    /* Mode appel */
+    #page-call { padding: 12px; min-height: auto; }
+    .call-header h2 { font-size: 20px; letter-spacing: 1.5px; }
+    .call-grid { grid-template-columns: repeat(2, 1fr); max-width: 100%; gap: 8px; }
+    .call-grid > div:last-child { grid-column: auto; }
+    .call-btn { padding: 10px !important; }
+    .call-btn .icon { font-size: 22px; }
+    .call-btn .name { font-size: 11px; }
+    .call-btn .count { font-size: 19px; }
+    .call-btn.rdv-fixe-mega .icon { font-size: 26px; }
+
+    .admin-period-btn { padding: 5px 9px; font-size: 11px; }
+  }
+
+  @media (max-width: 420px) {
+    .nav-tab { width: 48px; height: 46px; }
+    .call-grid { gap: 6px; }
   }
 
   /* Tablettes / Desktop : on élargit et centre proprement */
