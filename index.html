@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Cpath d='M58 10 L28 56 L48 56 L40 90 L75 42 L52 42 Z' fill='%2300d4ff'/%3E%3C/svg%3E">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EverGlass — Support Brief</title>
@@ -4872,12 +4873,13 @@ function initIdentity() {
     return;
   }
   if (urlCommercial) {
-    const list = getCommerciauxList();
-    if (!list.find(c => c.name === urlCommercial)) {
-      list.push({ name: urlCommercial, avatar: '🦁' });
-      saveCommerciauxList(list);
-    }
-    syncCommerciauxListFromCloud(() => resolveIdentity(urlCommercial));
+    syncCommerciauxListFromCloud(freshList => {
+      if (!freshList.find(c => c.name === urlCommercial)) {
+        const list = [...freshList, { name: urlCommercial, avatar: '🦁' }];
+        saveCommerciauxList(list);
+      }
+      resolveIdentity(urlCommercial);
+    });
     return;
   }
 
@@ -4922,14 +4924,16 @@ function selectIdentity(name) {
 }
 
 function selectAvatar(name, avatar) {
-  const list = getCommerciauxList();
-  const idx = list.findIndex(c => c.name === name);
-  if (idx >= 0) list[idx].avatar = avatar;
-  else list.push({ name, avatar });
-  saveCommerciauxList(list);
-  localStorage.setItem('eg_avatar_chosen_' + name, '1'); // flag : avatar confirmé
-  document.getElementById('avatar-picker').classList.add('hide');
-  applyIdentity();
+  syncCommerciauxListFromCloud(freshList => {
+    const list = [...freshList];
+    const idx = list.findIndex(c => c.name === name);
+    if (idx >= 0) list[idx].avatar = avatar;
+    else list.push({ name, avatar });
+    saveCommerciauxList(list);
+    localStorage.setItem('eg_avatar_chosen_' + name, '1'); // flag : avatar confirmé
+    document.getElementById('avatar-picker').classList.add('hide');
+    applyIdentity();
+  });
 }
 
 function logoutIdentity() {
@@ -5360,36 +5364,38 @@ function renderLinksList() {
 
 function deleteCommercial(name) {
   if (!confirm(`Supprimer définitivement ${name} et toutes ses données ? Cette action est irréversible.`)) return;
-  let list = getCommerciauxList();
-  list = list.filter(c => c.name !== name);
-  saveCommerciauxList(list);
+  syncCommerciauxListFromCloud(freshList => {
+    const list = freshList.filter(c => c.name !== name);
+    saveCommerciauxList(list);
 
-  // Nettoyage localStorage local (au cas où testé sur cet appareil)
-  ['eg_state', 'eg_xp', 'eg_config', 'eg_history', 'eg_autre_ville'].forEach(base => {
-    localStorage.removeItem(base + '__' + name);
+    // Nettoyage localStorage local (au cas où testé sur cet appareil)
+    ['eg_state', 'eg_xp', 'eg_config', 'eg_history', 'eg_autre_ville'].forEach(base => {
+      localStorage.removeItem(base + '__' + name);
+    });
+    localStorage.removeItem('eg_avatar_chosen_' + name);
+
+    // Nettoyage Firebase (doc + sous-collection jours)
+    if (db) {
+      db.collection('commerciaux').doc(name).collection('jours').get()
+        .then(snap => {
+          const batch = db.batch();
+          snap.forEach(d => batch.delete(d.ref));
+          return batch.commit();
+        })
+        .then(() => db.collection('commerciaux').doc(name).delete())
+        .catch(err => console.warn('Suppression Firebase échouée', err));
+    }
+
+    renderLinksList();
+    renderAdminPage();
+    showToast(`🗑 ${name} supprimé`);
   });
-  localStorage.removeItem('eg_avatar_chosen_' + name);
-
-  // Nettoyage Firebase (doc + sous-collection jours)
-  if (db) {
-    db.collection('commerciaux').doc(name).collection('jours').get()
-      .then(snap => {
-        const batch = db.batch();
-        snap.forEach(d => batch.delete(d.ref));
-        return batch.commit();
-      })
-      .then(() => db.collection('commerciaux').doc(name).delete())
-      .catch(err => console.warn('Suppression Firebase échouée', err));
-  }
-
-  renderLinksList();
-  renderAdminPage();
-  showToast(`🗑 ${name} supprimé`);
 }
 
 function openLinksPopup() {
-  renderLinksList();
   document.getElementById('links-popup').classList.add('open');
+  document.getElementById('links-list').innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">Synchronisation…</div>';
+  syncCommerciauxListFromCloud(() => renderLinksList());
 }
 
 function closeLinksPopup() {
@@ -5400,11 +5406,18 @@ function addCommercialFromAdmin() {
   const input = document.getElementById('links-new-name');
   const name = (input.value || '').trim();
   if (!name) return;
-  const list = getCommerciauxList();
-  if (!list.find(c => c.name === name)) { list.push({ name, avatar: '🦁' }); saveCommerciauxList(list); }
-  input.value = '';
-  renderLinksList();
-  renderAdminPage();
+  input.disabled = true;
+  syncCommerciauxListFromCloud(freshList => {
+    const list = [...freshList];
+    if (!list.find(c => c.name === name)) {
+      list.push({ name, avatar: '🦁' });
+      saveCommerciauxList(list);
+    }
+    input.value = '';
+    input.disabled = false;
+    renderLinksList();
+    renderAdminPage();
+  });
 }
 
 // ── BOOT ──────────────────────────────────────────────────────
