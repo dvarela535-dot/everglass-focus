@@ -4821,27 +4821,54 @@ function getCommercialObj(name) {
 // Ajoute / met à jour UN SEUL commercial — écriture atomique, ne touche jamais aux autres.
 function upsertCommercialCloud(name, avatar, cb) {
   if (!db) { cb && cb(); return; }
-  db.collection('roster').doc(name).set({ avatar, updatedAt: new Date().toISOString() }, { merge: true })
+  db.collection('commerciaux').doc(name).set({ avatar, rosterUpdatedAt: new Date().toISOString() }, { merge: true })
     .then(() => cb && cb())
     .catch(err => { console.warn('upsertCommercialCloud', name, err); cb && cb(); });
 }
 
-// Supprime UN SEUL commercial — écriture atomique.
+// Supprime UN SEUL commercial de la liste (sans toucher aux autres docs).
 function removeCommercialCloud(name, cb) {
   if (!db) { cb && cb(); return; }
-  db.collection('roster').doc(name).delete()
+  db.collection('commerciaux').doc(name).delete()
     .then(() => cb && cb())
     .catch(err => { console.warn('removeCommercialCloud', name, err); cb && cb(); });
 }
 
-// Récupère la liste à jour depuis Firebase (collection roster = 1 doc par commercial).
+// Récupère la liste à jour depuis Firebase (1 doc par commercial dans 'commerciaux').
+// Migration auto : si l'ancien doc meta/commerciaux contient des noms absents
+// de la collection commerciaux (jamais connectés depuis), on les recrée.
 function syncCommerciauxListFromCloud(callback) {
   if (!db) { callback(getCommerciauxList()); return; }
-  db.collection('roster').get().then(snap => {
+  db.collection('commerciaux').get().then(snap => {
     const list = [];
     snap.forEach(doc => list.push({ name: doc.id, avatar: (doc.data().avatar) || '🦁' }));
-    localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-    callback(list);
+
+    db.collection('meta').doc('commerciaux').get().then(oldDoc => {
+      const oldList = oldDoc.exists ? (oldDoc.data().list || []) : [];
+      const missing = oldList.filter(o => !list.find(l => l.name === o.name));
+      if (!missing.length) {
+        localStorage.setItem('eg_commerciaux', JSON.stringify(list));
+        callback(list);
+        return;
+      }
+      // Migration : on recrée les commerciaux manquants dans la collection commerciaux
+      let remaining = missing.length;
+      missing.forEach(m => {
+        db.collection('commerciaux').doc(m.name).set({ avatar: m.avatar || '🦁', rosterUpdatedAt: new Date().toISOString() }, { merge: true })
+          .catch(() => {})
+          .finally(() => {
+            list.push({ name: m.name, avatar: m.avatar || '🦁' });
+            remaining--;
+            if (remaining <= 0) {
+              localStorage.setItem('eg_commerciaux', JSON.stringify(list));
+              callback(list);
+            }
+          });
+      });
+    }).catch(() => {
+      localStorage.setItem('eg_commerciaux', JSON.stringify(list));
+      callback(list);
+    });
   }).catch(err => {
     console.warn('syncCommerciauxListFromCloud (offline ?)', err);
     callback(getCommerciauxList());
