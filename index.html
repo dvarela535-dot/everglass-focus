@@ -1855,8 +1855,8 @@
   <!-- NAV TABS -->
   <div class="nav-tabs">
     <div class="nav-tab" data-page="appels" onclick="switchPage('appels', this)">📞<span class="tab-label">APP.</span></div>
-    <div class="nav-tab call-mode-btn" data-page="call" onclick="switchPage('call', this)">📱<span class="tab-label">APPEL</span></div>
-    <div class="nav-tab active" data-page="conversion" onclick="switchPage('conversion', this)">🎯<span class="tab-label">CONV.</span></div>
+    <div class="nav-tab call-mode-btn active" data-page="call" onclick="switchPage('call', this)">📱<span class="tab-label">APPEL</span></div>
+    <div class="nav-tab" data-page="conversion" onclick="switchPage('conversion', this)">🎯<span class="tab-label">CONV.</span></div>
     <div class="nav-tab" data-page="gestion" onclick="switchPage('gestion', this)">🔵<span class="tab-label">GEST.</span></div>
     <div class="nav-tab" data-page="facebook" onclick="switchPage('facebook', this)">💬<span class="tab-label">FB</span></div>
     <div class="nav-tab" data-page="remarques" onclick="switchPage('remarques', this)">⭐<span class="tab-label">NOTE</span></div>
@@ -1868,7 +1868,7 @@
   <div class="content">
 
     <!-- CONVERSION PAGE -->
-    <div class="page active" id="page-conversion">
+    <div class="page" id="page-conversion">
       <div class="section-header">
         <span class="section-icon">🎯</span>
         <h2 style="color:var(--accent)">Conversion</h2>
@@ -2036,7 +2036,7 @@
     </div>
 
     <!-- CALL MODE PAGE -->
-    <div class="page" id="page-call">
+    <div class="page active" id="page-call">
       <div class="call-header">
         <h2>⚡ MODE APPEL ⚡</h2>
         <p>Un clic = une action. Zéro clavier.</p>
