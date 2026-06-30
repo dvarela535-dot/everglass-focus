@@ -993,7 +993,7 @@
     justify-content: center;
   }
   #rdvfixe-ville-popup.open { display: flex; }
-  #leadcat-qty-popup, #leadcat-ville-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup {
+  #leadcat-qty-popup, #leadcat-ville-popup, #leadcat-remove-popup, #perdu-popup, #perdu-ville-popup, #generic-ville-popup, #naturel-response-popup {
     display: none;
     position: fixed;
     inset: 0;
@@ -1002,7 +1002,7 @@
     align-items: center;
     justify-content: center;
   }
-  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
+  #leadcat-qty-popup.open, #leadcat-ville-popup.open, #leadcat-remove-popup.open, #perdu-popup.open, #perdu-ville-popup.open, #generic-ville-popup.open, #naturel-response-popup.open { display: flex; }
   #links-popup, #admin-avatar-popup {
     display: none;
     position: fixed;
@@ -2213,6 +2213,15 @@
   </div>
 </div>
 
+<!-- LEAD APPELÉ — POPUP SUPPRESSION : quelle ville corriger ? -->
+<div id="leadcat-remove-popup" onclick="if(event.target.id==='leadcat-remove-popup') cancelLeadCatRemovePopup()">
+  <div class="leadcat-box">
+    <h3>↩ Enlever un lead — dans quelle ville ?</h3>
+    <div class="leadcat-grid" id="leadcat-remove-ville-list" style="grid-template-columns:1fr;"></div>
+    <button class="leadcat-cancel" onclick="cancelLeadCatRemovePopup()">Annuler</button>
+  </div>
+</div>
+
 <!-- RDV FIXÉ — POPUP VILLE (étape 2) -->
 <div id="rdvfixe-ville-popup" onclick="if(event.target.id==='rdvfixe-ville-popup') cancelRdvVillePopup()">
   <div class="leadcat-box">
@@ -2931,22 +2940,73 @@ function leadCatAddVille(villeId) {
 }
 
 function leadCatRemove() {
-  if (!state.leads_appeles_log || state.leads_appeles_log.length === 0) return;
-  const last = state.leads_appeles_log.pop();
-  const count = typeof last === 'string' ? 1 : (last.count || 1);
-  const ville = typeof last === 'string' ? null : last.ville;
+  const log = state.leads_appeles_log || [];
+  if (!log.length) { showToast('Aucun lead à enlever'); return; }
+
+  // Liste des villes ayant au moins un lead aujourd'hui, avec leur compteur
+  const villesAvecLeads = {};
+  log.forEach(e => {
+    const ville = typeof e === 'string' ? '__sans_ville__' : (e.ville || '__sans_ville__');
+    const count = typeof e === 'string' ? 1 : (e.count || 1);
+    villesAvecLeads[ville] = (villesAvecLeads[ville] || 0) + count;
+  });
+
+  const villeIds = Object.keys(villesAvecLeads);
+  // S'il n'y a qu'une seule ville concernée, pas besoin de demander : on enlève direct.
+  if (villeIds.length === 1) {
+    removeLastLeadForVilleOrUntagged(villeIds[0]);
+    return;
+  }
+
+  const list = document.getElementById('leadcat-remove-ville-list');
+  list.innerHTML = villeIds.map(id => {
+    const label = id === '__sans_ville__' ? 'Sans ville précisée' : ((ALL_VILLES.find(x => x.id === id) || {}).label || id);
+    return `<button class="leadcat-btn red" onclick="removeLastLeadForVilleOrUntagged('${id}')">${label} <span style="opacity:0.7">(${villesAvecLeads[id]})</span></button>`;
+  }).join('');
+  const pop = document.getElementById('leadcat-remove-popup');
+  if (pop) pop.classList.add('open');
+}
+
+function cancelLeadCatRemovePopup() {
+  const pop = document.getElementById('leadcat-remove-popup');
+  if (pop) pop.classList.remove('open');
+}
+
+// Enlève le dernier lead pour une ville donnée (ou les leads sans ville précisée)
+function removeLastLeadForVilleOrUntagged(villeId) {
+  const pop = document.getElementById('leadcat-remove-popup');
+  if (pop) pop.classList.remove('open');
+
+  const log = state.leads_appeles_log || [];
+  let idx = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    const ville = typeof e === 'string' ? '__sans_ville__' : (e.ville || '__sans_ville__');
+    if (ville === villeId) { idx = i; break; }
+  }
+  if (idx === -1) { showToast('Aucun lead à enlever pour cette ville'); return; }
+
+  const entry = log[idx];
+  const count = typeof entry === 'string' ? 1 : (entry.count || 1);
+  const realVille = typeof entry === 'string' ? null : entry.ville;
+  log.splice(idx, 1);
+
   state.leads_appeles = Math.max(0, (state.leads_appeles || 0) - count);
-  if (ville) {
-    const lvKey = 'leadsville_' + ville;
+  if (realVille) {
+    const lvKey = 'leadsville_' + realVille;
     state[lvKey] = Math.max(0, (state[lvKey] || 0) - count);
   }
+
   const val = document.getElementById('val-leads_appeles');
   if (val) val.textContent = state.leads_appeles;
   const cel = document.getElementById('callval-leads_appeles');
   if (cel) cel.textContent = state.leads_appeles;
+
   renderLeadCatBreakdown();
+  renderACLeadsVilles();
   updateAll();
   saveStorage();
+  showToast('↩ Dernier lead retiré');
 }
 
 function buildLeadCatChip(label, appeles, rdv) {
