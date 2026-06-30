@@ -129,6 +129,21 @@
     flex-shrink: 0;
   }
   .admin-page-label { font-size: 11px; font-weight: 700; color: #c084fc; letter-spacing: 1px; }
+  .admin-period-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .admin-period-btn:hover { color: var(--text); }
+  .admin-period-btn.active { background: var(--accent); color: #fff; box-shadow: var(--glow); }
   .admin-switch-btn {
     background: none;
     border: 1px solid rgba(168,85,247,0.4);
@@ -1748,7 +1763,12 @@
   <div class="admin-topbar">
     <div class="identity-logo" style="font-size:18px">EVER<span>GLASS</span></div>
     <span class="admin-page-label">🛡 Admin</span>
-    <div style="display:flex;gap:8px;margin-left:auto">
+    <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+      <div id="admin-period-tabs" style="display:flex;gap:4px;background:var(--surface2);border-radius:10px;padding:3px">
+        <button class="admin-period-btn active" data-period="day" onclick="setAdminPeriod('day')">Jour</button>
+        <button class="admin-period-btn" data-period="week" onclick="setAdminPeriod('week')">Semaine</button>
+        <button class="admin-period-btn" data-period="month" onclick="setAdminPeriod('month')">Mois</button>
+      </div>
       <button class="admin-switch-btn" onclick="openLinksPopup()">🔗 Liens</button>
       <button class="admin-switch-btn" onclick="logoutIdentity()">Changer</button>
     </div>
@@ -4881,13 +4901,100 @@ function applyIdentity() {
   }
 }
 
+let adminPeriod = 'day'; // 'day' | 'week' | 'month'
+
+function getPeriodRange(period) {
+  const now = new Date();
+  if (period === 'day') {
+    const iso = getTodayIso();
+    return { start: iso, end: iso };
+  }
+  if (period === 'week') {
+    const day = (now.getDay() + 6) % 7; // lundi = 0
+    const monday = new Date(now); monday.setDate(now.getDate() - day);
+    const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+    return { start: monday.toISOString().slice(0,10), end: sunday.toISOString().slice(0,10) };
+  }
+  // month
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: first.toISOString().slice(0,10), end: last.toISOString().slice(0,10) };
+}
+
+function setAdminPeriod(period) {
+  adminPeriod = period;
+  document.querySelectorAll('.admin-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+  renderAdminPage();
+}
+
+// Additionne tous les champs numériques de plusieurs states en un seul objet agrégé
+function sumStates(states) {
+  const out = {};
+  states.forEach(s => {
+    if (!s) return;
+    Object.keys(s).forEach(k => {
+      const v = s[k];
+      if (typeof v === 'number') out[k] = (out[k] || 0) + v;
+    });
+  });
+  return out;
+}
+
+function fetchPeriodData(name, range, cb) {
+  if (!db) { cb({ state: null, xp: 0, rdv: 0 }); return; }
+  db.collection('commerciaux').doc(name).collection('jours')
+    .where(firebase.firestore.FieldPath.documentId(), '>=', range.start)
+    .where(firebase.firestore.FieldPath.documentId(), '<=', range.end)
+    .get()
+    .then(snap => {
+      const states = []; let xp = 0;
+      snap.forEach(doc => {
+        const data = doc.data();
+        if (data.state) states.push(data.state);
+        xp += data.xp || 0;
+      });
+      const aggState = sumStates(states);
+      cb({ state: aggState, xp, rdv: computeRdvTotal(aggState) });
+    })
+    .catch(err => { console.warn('fetchPeriodData', name, err); cb({ state: null, xp: 0, rdv: 0 }); });
+}
+
+
 // ── PAGE ADMIN ──────────────────────────────────────────────────
 function renderAdminPage() {
   syncCommerciauxListFromCloud(list => {
     adminCommerciauxData = {};
     list.forEach(c => adminCommerciauxData[c.name] = { avatar: c.avatar, state: null, xp: 0, lastSeen: null });
-    renderAdminGrid();
-    subscribeToAllCommercials(list.map(c => c.name));
+    if (adminPeriod === 'day') {
+      renderAdminGrid();
+      subscribeToAllCommercials(list.map(c => c.name));
+    } else {
+      // Détacher les listeners temps réel (la vue période n'est pas live)
+      Object.values(adminUnsubscribes).forEach(fn => fn());
+      adminUnsubscribes = {};
+      const range = getPeriodRange(adminPeriod);
+      let remaining = list.length;
+      if (!remaining) { renderAdminGrid(); return; }
+      list.forEach(c => {
+        fetchPeriodData(c.name, range, data => {
+          adminCommerciauxData[c.name] = { ...adminCommerciauxData[c.name], ...data };
+          remaining--;
+          if (remaining <= 0) renderAdminGrid();
+        });
+      });
+      // toujours écouter lastSeen pour le badge en ligne/hors ligne
+      list.forEach(c => {
+        if (!db) return;
+        const unsub2 = db.collection('commerciaux').doc(c.name)
+          .onSnapshot(doc => {
+            if (!adminCommerciauxData[c.name]) return;
+            adminCommerciauxData[c.name].lastSeen = doc.exists ? (doc.data().lastSeen || null) : null;
+            if (doc.exists && doc.data().avatar) adminCommerciauxData[c.name].avatar = doc.data().avatar;
+            updateAdminCard(c.name);
+          }, err => console.warn('lastSeen snapshot', c.name, err));
+        adminUnsubscribes[c.name + '_seen'] = unsub2;
+      });
+    }
   });
 }
 
@@ -5014,8 +5121,9 @@ function updateTeamCard() {
     if (d.lastSeen && (Date.now() - new Date(d.lastSeen).getTime()) < 10 * 60 * 1000) actifs++;
   });
   const nbTotal = Object.keys(adminCommerciauxData).length;
+  const periodLabel = adminPeriod === 'day' ? "Aujourd'hui" : (adminPeriod === 'week' ? 'Cette semaine' : 'Ce mois-ci');
   el.innerHTML = `<div class="admin-team-card">
-    <div class="admin-team-header">🌐 Équipe — Aujourd'hui <span style="margin-left:auto;font-size:10px;color:var(--muted)">${actifs}/${nbTotal} en ligne</span></div>
+    <div class="admin-team-header">🌐 Équipe — ${periodLabel} <span style="margin-left:auto;font-size:10px;color:var(--muted)">${actifs}/${nbTotal} en ligne</span></div>
     <div class="admin-team-stats">
       <div class="admin-team-stat"><div class="v">${rdvTotal}</div><div class="l">RDV total</div></div>
       <div class="admin-team-stat"><div class="v">${appelsTotal}</div><div class="l">Appels</div></div>
