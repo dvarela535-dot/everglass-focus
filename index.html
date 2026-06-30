@@ -5329,7 +5329,10 @@ function closeFullView() {
 
 // ── Liens ──
 function getShareLink(role, name) {
-  const base = location.origin + location.pathname;
+  const PROD_BASE = 'https://everglass-focus.vercel.app/';
+  // On force toujours le domaine de prod, même si l'admin a ouvert l'app
+  // depuis une URL de preview (...-git-main-...vercel.app) qui demande un login Vercel.
+  const base = PROD_BASE;
   return role === 'admin' ? `${base}?admin=1` : `${base}?commercial=${encodeURIComponent(name)}`;
 }
 
