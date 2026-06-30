@@ -4182,7 +4182,6 @@ function renderACVilles() {
       <td>${r.rdv_2eme}</td>
       <td>${r.rdv_gris}</td>
       <td>${r.rdv_violet}</td>
-      <td>${r.recales}</td>
       <td><b>${r.rdv}</b></td>
     </tr>`;
   }).join('');
@@ -4192,7 +4191,7 @@ function renderACVilles() {
       <div class="ac-card-title">📍 Répartition par ville</div>
       <div class="ac-ville-table-wrap">
         <table class="ac-ville-table">
-          <tr><th>Ville</th><th>Nouv. Leads</th><th>Leads</th><th>Slack</th><th>Stock</th><th>À appeler</th><th>Naturel</th><th>Msg FB</th><th>DM FB</th><th>2ème</th><th>Gris</th><th>Violet</th><th>Recalés</th><th>RDV</th></tr>
+          <tr><th>Ville</th><th>Nouv. Leads</th><th>Leads</th><th>Slack</th><th>Stock</th><th>À appeler</th><th>Naturel</th><th>Msg FB</th><th>DM FB</th><th>2ème</th><th>Gris</th><th>Violet</th><th>RDV</th></tr>
           ${rowsHtml}
         </table>
       </div>
@@ -4239,6 +4238,37 @@ function getGenericVilleCount(key, villeId) {
   return (state.generic_ville_log || []).filter(e => e.key === key && e.ville === villeId).length;
 }
 
+// Annule le DERNIER lead ajouté pour UNE ville précise (pas forcément le
+// tout dernier ajouté tous villes confondues) — corrige une erreur de saisie
+// même si on s'en rend compte après avoir ajouté des leads sur une autre ville.
+function removeLastLeadForVille(villeId) {
+  if (currentIdentity === '__admin__' || fullViewTarget) { showToast('👁 Mode lecture seule'); return; }
+  const log = state.leads_appeles_log || [];
+  let idx = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    const ville = typeof e === 'string' ? null : e.ville;
+    if (ville === villeId) { idx = i; break; }
+  }
+  if (idx === -1) { showToast('Aucun lead à enlever pour cette ville'); return; }
+  const entry = log[idx];
+  const count = typeof entry === 'string' ? 1 : (entry.count || 1);
+  log.splice(idx, 1);
+  state.leads_appeles = Math.max(0, (state.leads_appeles || 0) - count);
+  state['leadsville_' + villeId] = Math.max(0, (state['leadsville_' + villeId] || 0) - count);
+
+  const val = document.getElementById('val-leads_appeles');
+  if (val) val.textContent = state.leads_appeles;
+  const cel = document.getElementById('callval-leads_appeles');
+  if (cel) cel.textContent = state.leads_appeles;
+
+  renderLeadCatBreakdown();
+  renderACLeadsVilles();
+  updateAll();
+  saveStorage();
+  showToast('↩ Dernier lead retiré pour cette ville');
+}
+
 function renderACLeadsVilles() {
   const el = document.getElementById('ac-leadsvilles');
   if (!el) return;
@@ -4259,7 +4289,7 @@ function renderACLeadsVilles() {
         : getGenericVilleCount(cat.key, id);
       return buildLeadCatChip(cat.label, appeles, c[cat.rdvKey] || 0);
     }).join('');
-    return { label: v.label, chips };
+    return { id, label: v.label, chips };
   });
 
   el.innerHTML = `
@@ -4267,7 +4297,10 @@ function renderACLeadsVilles() {
       <div class="ac-card-title">🧬 Leads par ville — matière &amp; RDV</div>
       ${blocks.map(b => `
         <div class="composition-ville-block" style="margin-bottom:16px;">
-          <div class="composition-ville-title">📍 ${b.label}</div>
+          <div class="composition-ville-title" style="display:flex;align-items:center;gap:8px">
+            📍 ${b.label}
+            <button class="counter-btn minus" style="width:22px;height:22px;font-size:12px;margin-left:auto" onclick="removeLastLeadForVille('${b.id}')" title="Annuler le dernier lead ajouté pour cette ville">−</button>
+          </div>
           <div class="leadcat-breakdown">${b.chips}</div>
         </div>`).join('')}
     </div>`;
@@ -4358,7 +4391,6 @@ function renderACActivite() {
   const sources = [
     { label: 'Nouveaux Leads', val: state.leads_appeles || 0 },
     { label: 'Appels Naturels', val: state.appel_naturel || 0 },
-    { label: 'Recalés', val: state.perdu || 0 },
     { label: 'Messenger reçus', val: state.msg_fb_recu || 0 },
     { label: 'DM FB envoyés', val: state.dm_fb || 0 },
     { label: 'RDV via Leads', val: state.rdv_leads || 0 },
