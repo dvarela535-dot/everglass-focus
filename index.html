@@ -5136,9 +5136,19 @@ function renderLinksList() {
   let html = `<div class="links-row"><b>🛡 Admin (toi)</b><div class="links-row-inputs"><input readonly value="${adminLink}" onclick="this.select()"><button onclick="copyLink('${adminLink}')">Copier</button></div></div>`;
   html += names.map(c => {
     const link = getShareLink('commercial', c.name);
-    return `<div class="links-row"><b>${c.avatar} ${c.name}</b><div class="links-row-inputs"><input readonly value="${link}" onclick="this.select()"><button onclick="copyLink('${link}')">Copier</button></div></div>`;
+    const safeName = c.name.replace(/'/g, "\\'");
+    return `<div class="links-row"><b>${c.avatar} ${c.name}</b><div class="links-row-inputs"><input readonly value="${link}" onclick="this.select()"><button onclick="copyLink('${link}')">Copier</button><button onclick="deleteCommercial('${safeName}')" style="background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4);">✕</button></div></div>`;
   }).join('');
   el.innerHTML = html;
+}
+
+function deleteCommercial(name) {
+  if (!confirm(`Supprimer ${name} ? Ses données Firebase resteront mais il n'apparaîtra plus dans la liste.`)) return;
+  let list = getCommerciauxList();
+  list = list.filter(c => c.name !== name);
+  saveCommerciauxList(list);
+  renderLinksList();
+  renderAdminPage();
 }
 
 function openLinksPopup() {
