@@ -3283,6 +3283,14 @@ function renderCompositionGlobal() {
   el.innerHTML = html || '<div class="composition-empty">Aucun RDV enregistré pour l’instant.</div>';
 }
 
+// Total RDV fiable pour une ville : on resomme depuis le détail par source
+// (countRdvForVilleByKey), jamais depuis le compteur 'ville_X' qui peut dériver
+// si une action est annulée via le bouton −.
+function rdvTotalForVille(id) {
+  const c = countRdvForVilleByKey(id);
+  return RDV_KEYS.reduce((sum, k) => sum + (c[k] || 0), 0);
+}
+
 function countRdvForVilleByKey(villeId) {
   const counts = {};
   (state.rdv_fixe_log || []).forEach(entry => {
@@ -4626,14 +4634,12 @@ function renderACResume() {
   const withRdv = villeData.filter(v => v.rdv > 0);
   const bestRdvVille = withRdv.length ? withRdv.reduce((a,b)=>b.rdv>a.rdv?b:a) : null;
 
-  const sources = [
-    { label: 'les nouveaux leads', val: state.leads_appeles || 0 },
-    { label: 'les appels naturels', val: state.appel_naturel || 0 },
-    { label: 'Messenger', val: state.msg_fb_recu || 0 },
-    { label: 'Slack', val: state.rdv_slacks || 0 },
-  ];
-  const topSource = sources.reduce((a,b)=>b.val>a.val?b:a);
-  const weakSource = sources.reduce((a,b)=>b.val<a.val?b:a);
+  // Vraies sources de RDV (les mêmes clés que partout ailleurs dans l'app)
+  const allSources = RDV_KEYS.map(k => ({ key: k, label: RDV_SOURCE_LABELS[k] || k, val: state[k] || 0 }));
+  const CONTROLLABLE_KEYS = ['rdv_leads','rdv_aappeler','rdv_stocks','rdv_slacks','rdv_2eme','rdv_gris','rdv_violet'];
+  const controllableSources = allSources.filter(s => CONTROLLABLE_KEYS.includes(s.key));
+  const topSource = allSources.reduce((a,b)=>b.val>a.val?b:a, allSources[0]);
+  const weakControllable = controllableSources.filter(s => s.val === 0);
 
   const name = config.name || 'Le commercial';
   let text;
@@ -4643,8 +4649,8 @@ function renderACResume() {
     const pct = topVille ? Math.round(topVille.activite/totalActivite*100) : 0;
     text = `Aujourd'hui, <b>${name}</b> a principalement travaillé sur <b>${topVille.label}</b> où ${pct}% de son activité est concentrée. `;
     if (bestRdvVille) text += `C'est aussi sur <b>${bestRdvVille.label}</b> que le plus de RDV ont été décrochés (${bestRdvVille.rdv}). `;
-    text += `<b>${topSource.label.charAt(0).toUpperCase()+topSource.label.slice(1)}</b> représentent son principal levier de production. `;
-    if (weakSource.val < topSource.val) text += `<b>${weakSource.label.charAt(0).toUpperCase()+weakSource.label.slice(1)}</b> reste sous-exploité et représente sa plus grosse marge de progression.`;
+    if (topSource.val > 0) text += `<b>${topSource.label}</b> est sa principale source de RDV aujourd'hui (${topSource.val}). `;
+    if (weakControllable.length) text += `<b>${weakControllable.map(s=>s.label).join(', ')}</b> n'${weakControllable.length>1?'ont':'a'} encore rien donné aujourd'hui — marge de progression possible.`;
   }
 
   el.innerHTML = `
