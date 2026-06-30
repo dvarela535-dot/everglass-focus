@@ -4810,32 +4810,42 @@ function initFirebase() {
 function getCommerciauxList() {
   try {
     const raw = JSON.parse(localStorage.getItem('eg_commerciaux') || '[]');
-    if (!raw.length) return [{ name: 'Ema', avatar: '🦁' }];
     return raw.map(c => typeof c === 'string' ? { name: c, avatar: '🦁' } : c);
-  } catch(e) { return [{ name: 'Ema', avatar: '🦁' }]; }
+  } catch(e) { return []; }
 }
 
 function getCommercialObj(name) {
   return getCommerciauxList().find(c => c.name === name) || { name, avatar: '🦁' };
 }
 
-function saveCommerciauxList(list) {
-  localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-  if (db) db.collection('meta').doc('commerciaux').set({ list }).catch(()=>{});
+// Ajoute / met à jour UN SEUL commercial — écriture atomique, ne touche jamais aux autres.
+function upsertCommercialCloud(name, avatar, cb) {
+  if (!db) { cb && cb(); return; }
+  db.collection('roster').doc(name).set({ avatar, updatedAt: new Date().toISOString() }, { merge: true })
+    .then(() => cb && cb())
+    .catch(err => { console.warn('upsertCommercialCloud', name, err); cb && cb(); });
 }
 
+// Supprime UN SEUL commercial — écriture atomique.
+function removeCommercialCloud(name, cb) {
+  if (!db) { cb && cb(); return; }
+  db.collection('roster').doc(name).delete()
+    .then(() => cb && cb())
+    .catch(err => { console.warn('removeCommercialCloud', name, err); cb && cb(); });
+}
+
+// Récupère la liste à jour depuis Firebase (collection roster = 1 doc par commercial).
 function syncCommerciauxListFromCloud(callback) {
   if (!db) { callback(getCommerciauxList()); return; }
-  db.collection('meta').doc('commerciaux').get().then(doc => {
-    if (doc.exists) {
-      const data = doc.data();
-      const raw = data.list || (data.names || []).map(n => ({ name: n, avatar: '🦁' }));
-      localStorage.setItem('eg_commerciaux', JSON.stringify(raw));
-      callback(raw);
-    } else {
-      callback(getCommerciauxList());
-    }
-  }).catch(() => callback(getCommerciauxList()));
+  db.collection('roster').get().then(snap => {
+    const list = [];
+    snap.forEach(doc => list.push({ name: doc.id, avatar: (doc.data().avatar) || '🦁' }));
+    localStorage.setItem('eg_commerciaux', JSON.stringify(list));
+    callback(list);
+  }).catch(err => {
+    console.warn('syncCommerciauxListFromCloud (offline ?)', err);
+    callback(getCommerciauxList());
+  });
 }
 
 function getAvatarForCommercial(name) {
@@ -4875,10 +4885,10 @@ function initIdentity() {
   if (urlCommercial) {
     syncCommerciauxListFromCloud(freshList => {
       if (!freshList.find(c => c.name === urlCommercial)) {
-        const list = [...freshList, { name: urlCommercial, avatar: '🦁' }];
-        saveCommerciauxList(list);
+        upsertCommercialCloud(urlCommercial, '🦁', () => resolveIdentity(urlCommercial));
+      } else {
+        resolveIdentity(urlCommercial);
       }
-      resolveIdentity(urlCommercial);
     });
     return;
   }
@@ -4924,12 +4934,7 @@ function selectIdentity(name) {
 }
 
 function selectAvatar(name, avatar) {
-  syncCommerciauxListFromCloud(freshList => {
-    const list = [...freshList];
-    const idx = list.findIndex(c => c.name === name);
-    if (idx >= 0) list[idx].avatar = avatar;
-    else list.push({ name, avatar });
-    saveCommerciauxList(list);
+  upsertCommercialCloud(name, avatar, () => {
     localStorage.setItem('eg_avatar_chosen_' + name, '1'); // flag : avatar confirmé
     document.getElementById('avatar-picker').classList.add('hide');
     applyIdentity();
@@ -5364,9 +5369,7 @@ function renderLinksList() {
 
 function deleteCommercial(name) {
   if (!confirm(`Supprimer définitivement ${name} et toutes ses données ? Cette action est irréversible.`)) return;
-  syncCommerciauxListFromCloud(freshList => {
-    const list = freshList.filter(c => c.name !== name);
-    saveCommerciauxList(list);
+  removeCommercialCloud(name, () => {
 
     // Nettoyage localStorage local (au cas où testé sur cet appareil)
     ['eg_state', 'eg_xp', 'eg_config', 'eg_history', 'eg_autre_ville'].forEach(base => {
@@ -5408,15 +5411,18 @@ function addCommercialFromAdmin() {
   if (!name) return;
   input.disabled = true;
   syncCommerciauxListFromCloud(freshList => {
-    const list = [...freshList];
-    if (!list.find(c => c.name === name)) {
-      list.push({ name, avatar: '🦁' });
-      saveCommerciauxList(list);
+    if (freshList.find(c => c.name === name)) {
+      input.value = '';
+      input.disabled = false;
+      showToast('⚠ Ce nom existe déjà');
+      return;
     }
-    input.value = '';
-    input.disabled = false;
-    renderLinksList();
-    renderAdminPage();
+    upsertCommercialCloud(name, '🦁', () => {
+      input.value = '';
+      input.disabled = false;
+      renderLinksList();
+      renderAdminPage();
+    });
   });
 }
 
