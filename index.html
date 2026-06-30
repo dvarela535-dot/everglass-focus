@@ -1682,6 +1682,35 @@
   .ac-poly-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: var(--muted); }
   .ac-poly-row .ac-poly-bar-bg { flex: 1; height: 7px; background: var(--surface2); border-radius: 5px; overflow: hidden; }
   .ac-poly-row .ac-poly-bar-fill { height: 100%; background: var(--accent); border-radius: 5px; }
+  /* ══════════════════ RESPONSIVE ══════════════════ */
+
+  /* Petits écrans (téléphones étroits) */
+  @media (max-width: 420px) {
+    .content { padding: 12px; }
+    .topbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+    .nav-tabs { width: 58px; }
+    .nav-tab { width: 44px; height: 44px; font-size: 16px; }
+    .nav-tab .tab-label { font-size: 7px; }
+    .main { height: calc(100vh - 130px); }
+    .leadcat-box, .identity-box { width: 92vw; max-width: 92vw; padding: 20px 16px; }
+    #week-modal .leadcat-box, #links-popup .leadcat-box { max-height: 85vh; overflow-y: auto; }
+    .counter-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .bm-ville-grid { grid-template-columns: 1fr; }
+    .admin-cards-grid { grid-template-columns: 1fr; }
+    .perf-card, .ville-grid, .ac-records-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+
+  /* Tablettes / Desktop : on élargit et centre proprement */
+  @media (min-width: 900px) {
+    .content { padding: 28px 40px; }
+    .counter-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .admin-cards-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .bm-ville-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  @media (min-width: 1400px) {
+    .content { max-width: 1400px; margin: 0 auto; }
+  }
 
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -1752,7 +1781,7 @@
     <button class="day-nav-btn" id="day-next-btn" onclick="navigateDay(1)" title="Jour suivant">▶</button>
   </div>
   <div class="user-info">
-    <div class="user-badge" id="user-name-badge" style="cursor:pointer" onclick="openModal()">👤 <span id="display-name">Ema</span></div>
+    <div class="user-badge" id="user-name-badge" style="cursor:pointer" onclick="openModal()">👤 <span id="display-name"></span></div>
     <button id="theme-toggle" onclick="toggleTheme()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;color:#fff;transition:all 0.2s;" title="Mode jour/nuit">🌙</button>
   </div>
 </div>
@@ -2227,7 +2256,12 @@ const CALL_BUTTONS = [
 
 // ── STATE ─────────────────────────────────────────────────────
 let state = {};
-let config = { name: 'Ema', centre: 'Vénissieux', week: '', rdvGoal: 5, villesActives: ALL_VILLES.map(v => v.id) };
+function lsKey(base) {
+  const id = (currentIdentity && currentIdentity !== '__admin__') ? currentIdentity : '_default';
+  return base + '__' + id;
+}
+
+let config = { name: '', centre: '', week: '', rdvGoal: 5, villesActives: ALL_VILLES.map(v => v.id) };
 let xp = 0;
 let viewingIso = null; // null = aujourd'hui (état live) ; sinon = date ISO du jour en cours d'édition
 
@@ -2315,7 +2349,7 @@ function upsertHistoryEntry(iso) {
     if (idx >= 0) history[idx] = entry; else history.unshift(entry);
     history.sort((a, b) => (b.iso || '0000-00-00').localeCompare(a.iso || '0000-00-00'));
     if (history.length > 60) history.length = 60;
-    localStorage.setItem('eg_history', JSON.stringify(history));
+    localStorage.setItem(lsKey('eg_history'), JSON.stringify(history));
     return entry;
   } catch(e) { console.warn('upsertHistoryEntry a échoué', e); return null; }
 }
@@ -2330,12 +2364,12 @@ function loadStorage() {
       xp = todayEntry.xp || 0;
     } else {
       // rétrocompatibilité : anciennes données jamais migrées vers le système d'historique unifié
-      const saved = localStorage.getItem('eg_state');
-      const savedXp = localStorage.getItem('eg_xp');
+      const saved = localStorage.getItem(lsKey('eg_state'));
+      const savedXp = localStorage.getItem(lsKey('eg_xp'));
       if (saved) state = { ...state, ...JSON.parse(saved) };
       if (savedXp) { const d = JSON.parse(savedXp); xp = d.xp || 0; }
     }
-    const savedConf = localStorage.getItem('eg_config');
+    const savedConf = localStorage.getItem(lsKey('eg_config'));
     if (savedConf) config = { ...config, ...JSON.parse(savedConf) };
   } catch(e) { console.warn('localStorage indisponible (loadStorage)', e); }
 }
@@ -2346,12 +2380,12 @@ function saveStorage() {
     const entry = upsertHistoryEntry(iso);
     if (!viewingIso) {
       // mirroir rapide pour compatibilité / chargement immédiat au boot
-      localStorage.setItem('eg_state', JSON.stringify(state));
-      localStorage.setItem('eg_xp', JSON.stringify({ xp, date: new Date().toDateString() }));
+      localStorage.setItem(lsKey('eg_state'), JSON.stringify(state));
+      localStorage.setItem(lsKey('eg_xp'), JSON.stringify({ xp, date: new Date().toDateString() }));
     }
-    localStorage.setItem('eg_config', JSON.stringify(config));
+    localStorage.setItem(lsKey('eg_config'), JSON.stringify(config));
     const autreVille = document.getElementById('autre-ville-text')?.value || '';
-    localStorage.setItem('eg_autre_ville', autreVille);
+    localStorage.setItem(lsKey('eg_autre_ville'), autreVille);
     if (entry) pushToCloud(iso, entry);
   } catch(e) { console.warn('localStorage indisponible (saveStorage)', e); }
 }
@@ -2439,7 +2473,7 @@ function buildVillesGrid() {
 
 function loadVilles() {
   buildVillesGrid();
-  const at = localStorage.getItem('eg_autre_ville');
+  const at = localStorage.getItem(lsKey('eg_autre_ville'));
   if (at) { const el = document.getElementById('autre-ville-text'); if (el) el.value = at; }
   updateVillesTotal();
 }
@@ -3251,13 +3285,19 @@ function openModal() {
 }
 function closeModal() { document.getElementById('week-modal').classList.remove('open'); }
 function saveConfig() {
-  config.name = document.getElementById('modal-name').value || 'David';
+  config.name = document.getElementById('modal-name').value || '';
   config.centre = document.getElementById('modal-centre').value;
   config.week = document.getElementById('modal-week').value;
   config.rdvGoal = parseInt(document.getElementById('modal-rdv-goal').value) || 5;
   const checked = [...document.querySelectorAll('#modal-villes-list input:checked')].map(i => i.value);
   config.villesActives = checked.length ? checked : ALL_VILLES.map(v => v.id);
-  document.getElementById('display-name').textContent = config.name;
+  if (currentIdentity && currentIdentity !== '__admin__') {
+    const myEntry = getCommerciauxList().find(c => c.name === currentIdentity);
+    const av = myEntry && myEntry.avatar ? myEntry.avatar : '👤';
+    document.getElementById('display-name').textContent = av + ' ' + currentIdentity;
+  } else {
+    document.getElementById('display-name').textContent = config.name || 'Commercial';
+  }
   document.getElementById('week-label').textContent = config.week || 'Semaine —';
   closeModal();
   saveStorage();
@@ -3638,7 +3678,7 @@ function loadDay(iso) {
 // ══════════════════ ANALYSE COMMERCIAL ══════════════════
 
 function getHistory() {
-  try { return JSON.parse(localStorage.getItem('eg_history') || '[]'); } catch(e) { return []; }
+  try { return JSON.parse(localStorage.getItem(lsKey('eg_history')) || '[]'); } catch(e) { return []; }
 }
 
 // ══════════════════ BILANS HEBDO / MENSUEL ══════════════════
@@ -3901,14 +3941,16 @@ function renderACProfile() {
   const lastActivity = history[0] ? history[0].date : "Aujourd'hui";
   let lv = LEVELS[0];
   for (const l of LEVELS) { if (xp >= l[0]) lv = l; }
-  const initials = (config.name || '?').trim().slice(0,2).toUpperCase();
+  const displayName = (currentIdentity && currentIdentity !== '__admin__') ? currentIdentity : (config.name || 'Commercial');
+  const myEntry = getCommerciauxList().find(c => c.name === currentIdentity);
+  const avatarDisplay = myEntry && myEntry.avatar ? myEntry.avatar : displayName.trim().slice(0,2).toUpperCase();
 
   el.innerHTML = `
     <div class="ac-card">
       <div class="ac-profile-top">
-        <div class="ac-avatar">${initials}</div>
+        <div class="ac-avatar">${avatarDisplay}</div>
         <div>
-          <div class="ac-profile-name">${config.name || 'Commercial'}</div>
+          <div class="ac-profile-name">${displayName}</div>
           <div class="ac-profile-sub">${config.centre || ''}</div>
           <div class="ac-profile-meta">
             <span>🏅 <b>${lv[1]}</b> (Niv. ${lv[2]})</span>
@@ -5153,12 +5195,32 @@ function renderLinksList() {
 }
 
 function deleteCommercial(name) {
-  if (!confirm(`Supprimer ${name} ? Ses données Firebase resteront mais il n'apparaîtra plus dans la liste.`)) return;
+  if (!confirm(`Supprimer définitivement ${name} et toutes ses données ? Cette action est irréversible.`)) return;
   let list = getCommerciauxList();
   list = list.filter(c => c.name !== name);
   saveCommerciauxList(list);
+
+  // Nettoyage localStorage local (au cas où testé sur cet appareil)
+  ['eg_state', 'eg_xp', 'eg_config', 'eg_history', 'eg_autre_ville'].forEach(base => {
+    localStorage.removeItem(base + '__' + name);
+  });
+  localStorage.removeItem('eg_avatar_chosen_' + name);
+
+  // Nettoyage Firebase (doc + sous-collection jours)
+  if (db) {
+    db.collection('commerciaux').doc(name).collection('jours').get()
+      .then(snap => {
+        const batch = db.batch();
+        snap.forEach(d => batch.delete(d.ref));
+        return batch.commit();
+      })
+      .then(() => db.collection('commerciaux').doc(name).delete())
+      .catch(err => console.warn('Suppression Firebase échouée', err));
+  }
+
   renderLinksList();
   renderAdminPage();
+  showToast(`🗑 ${name} supprimé`);
 }
 
 function openLinksPopup() {
@@ -5190,8 +5252,13 @@ function bootApp() {
   rebuildAllGrids();
   updateAll();
   updateLevel();
-  document.getElementById('display-name').textContent = config.name;
-  document.getElementById('week-label').textContent = config.week || document.getElementById('week-label').textContent;
+  if (currentIdentity && currentIdentity !== '__admin__') {
+    const myEntry = getCommerciauxList().find(c => c.name === currentIdentity);
+    const av = myEntry && myEntry.avatar ? myEntry.avatar : '👤';
+    document.getElementById('display-name').textContent = av + ' ' + currentIdentity;
+  } else {
+    document.getElementById('display-name').textContent = config.name || 'Commercial';
+  }
   document.getElementById('xp-val').textContent = xp;
   renderHistory();
   loadRemarks();
