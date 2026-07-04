@@ -5403,38 +5403,47 @@ function removeCommercialCloud(name, cb) {
 // de la collection commerciaux (jamais connectés depuis), on les recrée.
 function syncCommerciauxListFromCloud(callback) {
   if (!db) { callback(getCommerciauxList()); return; }
-  db.collection('commerciaux').get().then(snap => {
-    const list = [];
-    snap.forEach(doc => list.push({ name: doc.id, avatar: (doc.data().avatar) || '🦁' }));
 
-    db.collection('meta').doc('commerciaux').get().then(oldDoc => {
-      const oldList = oldDoc.exists ? (oldDoc.data().list || []) : [];
-      const missing = oldList.filter(o => !list.find(l => l.name === o.name));
-      if (!missing.length) {
-        localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-        callback(list);
-        return;
-      }
-      // Migration : on recrée les commerciaux manquants dans la collection commerciaux
-      let remaining = missing.length;
-      missing.forEach(m => {
-        db.collection('commerciaux').doc(m.name).set({ avatar: m.avatar || '🦁', rosterUpdatedAt: new Date().toISOString() }, { merge: true })
-          .catch(() => {})
-          .finally(() => {
-            list.push({ name: m.name, avatar: m.avatar || '🦁' });
-            remaining--;
-            if (remaining <= 0) {
-              localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-              callback(list);
-            }
-          });
+  // On lit TOUTES les sources possibles en parallèle et on merge
+  Promise.allSettled([
+    db.collection('commerciaux').get(),
+    db.collection('meta').doc('commerciaux').get(),
+    db.collection('roster').get()
+  ]).then(([commResult, metaResult, rosterResult]) => {
+    const merged = {};
+
+    // Source 1 : collection commerciaux (principale, post-fix)
+    if (commResult.status === 'fulfilled') {
+      commResult.value.forEach(doc => {
+        merged[doc.id] = { name: doc.id, avatar: doc.data().avatar || '🦁' };
       });
-    }).catch(() => {
-      localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-      callback(list);
-    });
+    }
+
+    // Source 2 : meta/commerciaux (ancienne liste centralisée)
+    if (metaResult.status === 'fulfilled' && metaResult.value.exists) {
+      const oldList = metaResult.value.data().list || [];
+      oldList.forEach(o => {
+        if (!merged[o.name]) merged[o.name] = { name: o.name, avatar: o.avatar || '🦁' };
+      });
+    }
+
+    // Source 3 : collection roster (migration intermédiaire)
+    if (rosterResult.status === 'fulfilled') {
+      rosterResult.value.forEach(doc => {
+        if (!merged[doc.id]) merged[doc.id] = { name: doc.id, avatar: doc.data().avatar || '🦁' };
+      });
+    }
+
+    const list = Object.values(merged);
+    if (!list.length) {
+      // Dernier recours : cache local
+      callback(getCommerciauxList());
+      return;
+    }
+    localStorage.setItem('eg_commerciaux', JSON.stringify(list));
+    callback(list);
   }).catch(err => {
-    console.warn('syncCommerciauxListFromCloud (offline ?)', err);
+    console.warn('syncCommerciauxListFromCloud failed', err);
     callback(getCommerciauxList());
   });
 }
