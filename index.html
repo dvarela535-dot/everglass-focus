@@ -5493,9 +5493,11 @@ function initIdentity() {
 
 function renderIdentityPicker() {
   const list = document.getElementById('identity-list');
-  const commerciaux = getCommerciauxList();
-  list.innerHTML = commerciaux.map(c => `<button class="identity-btn" onclick="selectIdentity('${c.name.replace(/'/g,"\\'")}')"><span style="font-size:22px">${c.avatar}</span> ${c.name}</button>`).join('');
+  list.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">Chargement…</div>`;
   document.getElementById('identity-picker').classList.remove('hide');
+  syncCommerciauxListFromCloud(commerciaux => {
+    list.innerHTML = commerciaux.map(c => `<button class="identity-btn" onclick="selectIdentity('${c.name.replace(/'/g,"\\'")}')"><span style="font-size:22px">${c.avatar}</span> ${c.name}</button>`).join('');
+  });
 }
 
 function showAvatarPicker(name) {
