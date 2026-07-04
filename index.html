@@ -5404,48 +5404,45 @@ function removeCommercialCloud(name, cb) {
 function syncCommerciauxListFromCloud(callback) {
   if (!db) { callback(getCommerciauxList()); return; }
 
-  // On lit TOUTES les sources possibles en parallèle et on merge
-  Promise.allSettled([
-    db.collection('commerciaux').get(),
-    db.collection('meta').doc('commerciaux').get(),
-    db.collection('roster').get()
-  ]).then(([commResult, metaResult, rosterResult]) => {
-    const merged = {};
+  let done = false;
+  const timeout = setTimeout(() => {
+    if (!done) { done = true; callback(getCommerciauxList()); }
+  }, 5000);
 
-    // Source 1 : collection commerciaux (principale, post-fix)
-    if (commResult.status === 'fulfilled') {
-      commResult.value.forEach(doc => {
-        merged[doc.id] = { name: doc.id, avatar: doc.data().avatar || '🦁' };
+  db.collection('commerciaux').get()
+    .then(snap => {
+      if (done) return;
+      done = true;
+      clearTimeout(timeout);
+
+      const fromFirebase = [];
+      snap.forEach(doc => {
+        if (doc.id && doc.id !== '__admin__') {
+          fromFirebase.push({ name: doc.id, avatar: doc.data().avatar || '🦁' });
+        }
       });
-    }
 
-    // Source 2 : meta/commerciaux (ancienne liste centralisée)
-    if (metaResult.status === 'fulfilled' && metaResult.value.exists) {
-      const oldList = metaResult.value.data().list || [];
-      oldList.forEach(o => {
-        if (!merged[o.name]) merged[o.name] = { name: o.name, avatar: o.avatar || '🦁' };
+      // Merge avec le cache local pour ne rien perdre
+      const cached = getCommerciauxList();
+      const merged = [...fromFirebase];
+      cached.forEach(c => {
+        if (!merged.find(m => m.name === c.name)) merged.push(c);
       });
-    }
 
-    // Source 3 : collection roster (migration intermédiaire)
-    if (rosterResult.status === 'fulfilled') {
-      rosterResult.value.forEach(doc => {
-        if (!merged[doc.id]) merged[doc.id] = { name: doc.id, avatar: doc.data().avatar || '🦁' };
-      });
-    }
-
-    const list = Object.values(merged);
-    if (!list.length) {
-      // Dernier recours : cache local
+      if (merged.length) {
+        localStorage.setItem('eg_commerciaux', JSON.stringify(merged));
+        callback(merged);
+      } else {
+        callback(cached);
+      }
+    })
+    .catch(err => {
+      if (done) return;
+      done = true;
+      clearTimeout(timeout);
+      console.warn('Firebase read error:', err);
       callback(getCommerciauxList());
-      return;
-    }
-    localStorage.setItem('eg_commerciaux', JSON.stringify(list));
-    callback(list);
-  }).catch(err => {
-    console.warn('syncCommerciauxListFromCloud failed', err);
-    callback(getCommerciauxList());
-  });
+    });
 }
 
 function getAvatarForCommercial(name) {
@@ -5502,10 +5499,23 @@ function initIdentity() {
 
 function renderIdentityPicker() {
   const list = document.getElementById('identity-list');
-  list.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">Chargement…</div>`;
   document.getElementById('identity-picker').classList.remove('hide');
-  syncCommerciauxListFromCloud(commerciaux => {
+
+  function renderList(commerciaux) {
+    if (!commerciaux.length) {
+      list.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:10px">Chargement…</div>`;
+      return;
+    }
     list.innerHTML = commerciaux.map(c => `<button class="identity-btn" onclick="selectIdentity('${c.name.replace(/'/g,"\\'")}')"><span style="font-size:22px">${c.avatar}</span> ${c.name}</button>`).join('');
+  }
+
+  // 1. Affichage immédiat depuis le cache local
+  const cached = getCommerciauxList();
+  renderList(cached);
+
+  // 2. Rafraîchissement depuis Firebase (sans bloquer l'affichage)
+  syncCommerciauxListFromCloud(fresh => {
+    if (fresh.length) renderList(fresh);
   });
 }
 
