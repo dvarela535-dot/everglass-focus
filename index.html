@@ -1849,6 +1849,10 @@
     <h2>C'est qui ?</h2>
     <div id="identity-list" class="identity-list"></div>
     <p class="identity-hint">Pas dans la liste ? Demande ton lien personnel à l'admin.</p>
+    <div style="margin:10px 0;display:flex;gap:8px">
+      <input type="text" id="manual-name-input" placeholder="Ou tape ton prénom..." style="flex:1;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:15px;" onkeydown="if(event.key==='Enter') manualLogin()">
+      <button onclick="manualLogin()" style="padding:10px 14px;background:var(--accent);border:none;border-radius:10px;color:#042f3a;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">→ Entrer</button>
+    </div>
     <div id="identity-status" class="identity-status"></div>
     <button class="identity-admin-btn" onclick="selectIdentity('__admin__')" style="margin-top:14px;">🛡 Admin</button>
   </div>
@@ -2176,6 +2180,16 @@
       <div style="display:flex;gap:10px;margin-top:20px;justify-content:center">
         <button class="leadcat-btn green" onclick="generateReport()" style="max-width:220px">🔄 Générer</button>
         <button class="leadcat-btn cyan" onclick="printReport()" style="max-width:220px">🖨️ Télécharger PDF</button>
+        <!-- Historique des rapports -->
+      <div style="margin-top:24px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📁 Rapports précédents</div>
+        <div id="saved-reports-list"><div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun rapport généré</div></div>
+      </div>
+    </div>
+      <!-- Historique des rapports -->
+      <div style="margin-top:24px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📁 Rapports précédents</div>
+        <div id="saved-reports-list"><div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun rapport généré</div></div>
       </div>
     </div>
 
@@ -5248,6 +5262,19 @@ function updateDateHeader() {
 
 // Bascule l'app entière (état, remarques, niveau, grilles...) vers le jour ISO demandé,
 // en sauvegardant proprement le jour quitté avant de partir.
+function applyDayRender() {
+  const todayIso = getTodayIso();
+  const entryForRemarks = viewingIso ? getHistory().find(h => h.iso === viewingIso) : null;
+  setRemarksFields(viewingIso ? entryForRemarks?.remarks : (getHistory().find(h => h.iso === todayIso)?.remarks));
+  renderLeadsEntrantsGrid();
+  rebuildAllGrids();
+  updateAll();
+  updateLevel();
+  const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
+  updateDateHeader();
+  renderHistory();
+}
+
 function goToIso(targetIso) {
   const todayIso = getTodayIso();
   saveStorage(); // sauvegarde le jour qu'on quitte (aujourd'hui ou un jour passé en édition)
@@ -5255,28 +5282,52 @@ function goToIso(targetIso) {
   if (targetIso === todayIso) {
     viewingIso = null;
     loadStorage();
-  } else {
-    viewingIso = targetIso;
-    const entry = getHistory().find(h => h.iso === targetIso);
-    if (entry) {
-      state = JSON.parse(JSON.stringify(entry.state));
-      xp = entry.xp || 0;
-    } else {
-      initState();
-      xp = 0;
-    }
+    applyDayRender();
+    return;
   }
 
-  const entryForRemarks = viewingIso ? getHistory().find(h => h.iso === viewingIso) : null;
-  setRemarksFields(viewingIso ? entryForRemarks?.remarks : (getHistory().find(h => h.iso === todayIso)?.remarks));
-  renderLeadsEntrantsGrid();
+  viewingIso = targetIso;
+  const localEntry = getHistory().find(h => h.iso === targetIso);
 
-  rebuildAllGrids();
-  updateAll();
-  updateLevel();
-  const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
-  updateDateHeader();
-  renderHistory();
+  if (localEntry) {
+    // Données présentes en local → affichage immédiat
+    state = JSON.parse(JSON.stringify(localEntry.state));
+    xp = localEntry.xp || 0;
+    applyDayRender();
+  } else if (db && currentIdentity && currentIdentity !== '__admin__') {
+    // Pas en local → on cherche dans Firebase
+    showToast('⏳ Chargement depuis le cloud…');
+    const timer = setTimeout(() => { initState(); xp = 0; applyDayRender(); }, 5000);
+    db.collection('commerciaux').doc(currentIdentity).collection('jours').doc(targetIso).get()
+      .then(doc => {
+        clearTimeout(timer);
+        if (doc.exists) {
+          const data = doc.data();
+          state = JSON.parse(JSON.stringify(data.state || {}));
+          xp = data.xp || 0;
+          // Mise en cache local
+          upsertHistoryEntry(targetIso);
+          showToast('✅ Données du ' + targetIso + ' chargées');
+        } else {
+          initState();
+          xp = 0;
+          showToast('📭 Aucune donnée pour ce jour');
+        }
+        applyDayRender();
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        initState();
+        xp = 0;
+        showToast('⚠ Impossible de charger ce jour');
+        applyDayRender();
+      });
+  } else {
+    // Pas de Firebase dispo
+    initState();
+    xp = 0;
+    applyDayRender();
+  }
 }
 
 function navigateDay(delta) {
@@ -5295,6 +5346,184 @@ function goToToday() {
 function getWeekNumber(d) {
   const onejan = new Date(d.getFullYear(), 0, 1);
   return Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+}
+
+// ══════════════════ PERDUS — POPUP CANCEL (manquait) ══════════════════
+function cancelPerduPopup() {
+  const pop = document.getElementById('perdu-popup');
+  if (pop) pop.classList.remove('open');
+  pendingPerduNote = '';
+}
+
+// ══════════════════ RAPPORT / SUPPORT BRIEF ══════════════════
+
+let reportWeekOffset = 0;
+
+function getReportWeekRange(offset) {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day + offset * 7);
+  monday.setHours(0,0,0,0);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  const fmt = d => { const x = new Date(d+'T12:00:00'); return x.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}); };
+  const year = new Date(days[0]+'T12:00:00').getFullYear();
+  const wn = getWeekNumber(new Date(days[0]+'T12:00:00'));
+  return { days, label: 'Semaine ' + wn + ' — du ' + fmt(days[0]) + ' au ' + fmt(days[6]) + ' ' + year };
+}
+
+function shiftReportWeek(delta) {
+  reportWeekOffset += delta;
+  if (reportWeekOffset > 0) reportWeekOffset = 0;
+  const { label } = getReportWeekRange(reportWeekOffset);
+  const el = document.getElementById('rapport-week-label');
+  if (el) el.textContent = label;
+}
+
+function getReportHistory() {
+  try { return JSON.parse(localStorage.getItem(lsKey('eg_reports')) || '[]'); } catch(e) { return []; }
+}
+function saveReportHistory(arr) {
+  try { localStorage.setItem(lsKey('eg_reports'), JSON.stringify(arr.slice(0,20))); } catch(e) {}
+}
+
+function collectWeekData(days) {
+  const history = getHistory();
+  const todayIso = getTodayIso();
+  return days.map(iso => {
+    let s = null, dayXp = 0;
+    if (iso === todayIso) { s = JSON.parse(JSON.stringify(state)); dayXp = xp; }
+    else {
+      const entry = history.find(h => h.iso === iso);
+      if (entry) { s = JSON.parse(JSON.stringify(entry.state)); dayXp = entry.xp || 0; }
+    }
+    const rdv = s ? computeRdvTotal(s) : 0;
+    const appels = s ? ((s.leads_appeles||0)+(s.appel_naturel||0)) : 0;
+    const perdus = s ? (s.perdu||0) : 0;
+    const perdu_log = s ? (s.perdu_log||[]) : [];
+    return { iso, s, rdv, appels, perdus, perdu_log, xp: dayXp, actif: !!s };
+  });
+}
+
+function generateReport() {
+  const { days, label } = getReportWeekRange(reportWeekOffset);
+  const data = collectWeekData(days);
+  const totalRdv = data.reduce((a,d)=>a+d.rdv, 0);
+  const totalAppels = data.reduce((a,d)=>a+d.appels, 0);
+  const totalPerdus = data.reduce((a,d)=>a+d.perdus, 0);
+  const tauxConv = totalAppels > 0 ? Math.round(totalRdv/totalAppels*100) : 0;
+  const perduByType = {};
+  data.forEach(d => { d.perdu_log.forEach(e => { const k = e.note||'Non précisé'; perduByType[k]=(perduByType[k]||0)+1; }); });
+  const perduEntries = Object.entries(perduByType).sort((a,b)=>b[1]-a[1]);
+  const DAY_LABELS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const maxRdv = Math.max(...data.map(d=>d.rdv), 1);
+  const bestDay = data.reduce((best,d) => d.rdv > (best?best.rdv:-1) ? d : best, null);
+  const bestDayLabel = bestDay ? DAY_LABELS[days.indexOf(bestDay.iso)] : '—';
+  let analyse = '';
+  if (totalRdv === 0) {
+    analyse = 'Aucun RDV enregistré cette semaine. Vérifie que tes données ont bien été saisies.';
+  } else {
+    const joursActifs = data.filter(d=>d.actif).length || 1;
+    const moy = (totalRdv/joursActifs).toFixed(1);
+    analyse = totalRdv + ' RDV décrochés sur la semaine, soit une moyenne de ' + moy + '/jour actif. ';
+    if (tauxConv >= 40) analyse += 'Excellent taux de conversion (' + tauxConv + '%) — qualité d'appel au top. ';
+    else if (tauxConv >= 20) analyse += 'Taux de conversion correct (' + tauxConv + '%) — encore de la marge pour progresser. ';
+    else if (tauxConv > 0) analyse += 'Taux de conversion faible (' + tauxConv + '%) — le volume d'appels est là, mais il faut travailler la qualification. ';
+    if (bestDay && bestDay.rdv >= 2) analyse += 'Meilleure journée : ' + bestDayLabel + ' avec ' + bestDay.rdv + ' RDV. ';
+    if (perduEntries.length > 0) analyse += 'Principal motif de perte : "' + perduEntries[0][0] + '" (' + perduEntries[0][1] + ' fois).';
+  }
+  let conclusion = '';
+  if (totalRdv >= 25) conclusion = '🔥 Semaine de feu ! Tu es au-dessus des objectifs — maintiens cette dynamique.';
+  else if (totalRdv >= 15) conclusion = '💪 Bonne semaine, tu es dans les clous. Pousser 2-3 appels de plus par jour ferait la différence.';
+  else if (totalRdv >= 5) conclusion = '📈 Semaine moyenne. Identifie les créneaux où tu décroches le plus et concentre-toi dessus.';
+  else conclusion = '⚡ Semaine difficile. Reprends les fondamentaux : volume d'appels et pitch d'accroche.';
+  const avatarDisplay = localStorage.getItem('eg_avatar_chosen_' + currentIdentity) || '🦁';
+  const nom = currentIdentity || 'Commercial';
+  const rowRdv = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">🎯 RDV</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);font-weight:800;color:' + (d.rdv>0?'var(--accent)':'var(--muted)') + '">' + (d.rdv||'—') + '</td>').join('') + '</tr>';
+  const rowApp = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">📞 Appels</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:var(--text)">' + (d.actif?d.appels:'—') + '</td>').join('') + '</tr>';
+  const rowPer = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">❌ Perdus</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:' + (d.perdus>0?'#f87171':'var(--muted)') + '">' + (d.actif?d.perdus:'—') + '</td>').join('') + '</tr>';
+  const thRow = '<tr style="background:var(--surface2)"><th style="padding:8px 6px;text-align:left;border:1px solid var(--border);color:var(--muted);font-weight:700">Jour</th>' + data.map((d,i)=>'<th style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:' + (d.actif?'var(--text)':'var(--muted)') + '">' + DAY_LABELS[i] + '<br><span style="font-size:10px;color:var(--muted)">' + d.iso.slice(5) + '</span></th>').join('') + '</tr>';
+  const statsCards = [
+    {label:'RDV TOTAL',val:totalRdv,icon:'🎯',color:'var(--accent)'},
+    {label:'APPELS',val:totalAppels,icon:'📞',color:'#60a5fa'},
+    {label:'PERDUS',val:totalPerdus,icon:'❌',color:'#f87171'},
+    {label:'CONVERSION',val:tauxConv+'%',icon:'📊',color:'#34d399'},
+  ].map(c=>'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center"><div style="font-size:20px">' + c.icon + '</div><div style="font-size:22px;font-weight:800;color:' + c.color + '">' + c.val + '</div><div style="font-size:10px;color:var(--muted);font-weight:600">' + c.label + '</div></div>').join('');
+  const bars = data.map((d,i)=>{
+    const h = maxRdv > 0 ? Math.round((d.rdv/maxRdv)*70)+10 : 10;
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:11px;font-weight:700;color:var(--accent)">' + (d.rdv||'') + '</div><div style="width:100%;height:' + h + 'px;background:' + (d.rdv>0?'var(--accent)':'var(--surface2)') + ';border-radius:4px 4px 0 0;opacity:' + (d.actif?1:0.3) + '"></div><div style="font-size:10px;color:var(--muted)">' + DAY_LABELS[i] + '</div></div>';
+  }).join('');
+  const perduSection = perduEntries.length > 0 ? '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">❌ Motifs de perte</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + perduEntries.map(([k,v])=>'<div style="background:var(--surface2);border:1px solid #f87171;border-radius:8px;padding:5px 10px;font-size:12px;color:var(--text)"><span style="color:#f87171;font-weight:700">' + v + '×</span> ' + k + '</div>').join('') + '</div></div>' : '';
+  const html = '<div style="font-family:Rajdhani,sans-serif;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px" id="rapport-printable">' +
+    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid var(--accent)">' +
+    '<div style="font-size:36px">' + avatarDisplay + '</div>' +
+    '<div><div style="font-size:20px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:1px">' + nom + '</div>' +
+    '<div style="font-size:12px;color:var(--muted)">' + label + '</div></div>' +
+    '<div style="margin-left:auto;font-size:11px;color:var(--muted)">Généré le ' + new Date().toLocaleDateString('fr-FR') + '</div></div>' +
+    '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">📅 Activité par jour</div>' +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead>' + thRow + '</thead><tbody>' + rowRdv + rowApp + rowPer + '</tbody></table></div></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">' + statsCards + '</div>' +
+    '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📊 RDV par jour</div>' +
+    '<div style="display:flex;align-items:flex-end;gap:6px;height:80px">' + bars + '</div></div>' +
+    perduSection +
+    '<div style="margin-bottom:14px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">🔍 Analyse</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.6">' + analyse + '</div></div>' +
+    '<div style="background:var(--surface2);border-left:3px solid #34d399;border-radius:8px;padding:12px 14px">' +
+    '<div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">🏆 Coach</div>' +
+    '<div style="font-size:13px;color:var(--text);line-height:1.6">' + conclusion + '</div></div></div>';
+
+  const zone = document.getElementById('rapport-content');
+  if (zone) zone.innerHTML = html;
+
+  const reports = getReportHistory();
+  const key = days[0];
+  const idx = reports.findIndex(r => r.weekStart === key);
+  const entry = { weekStart: key, weekEnd: days[6], label, html, generatedAt: new Date().toISOString() };
+  if (idx >= 0) reports[idx] = entry; else reports.unshift(entry);
+  saveReportHistory(reports);
+  renderSavedReports();
+  showToast('✅ Rapport généré !');
+}
+
+function renderSavedReports() {
+  const container = document.getElementById('saved-reports-list');
+  if (!container) return;
+  const reports = getReportHistory();
+  if (reports.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun rapport généré</div>';
+    return;
+  }
+  container.innerHTML = reports.map((r, i) =>
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer" onclick="loadSavedReport(' + i + ')">' +
+    '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text)">' + r.label + '</div>' +
+    '<div style="font-size:11px;color:var(--muted)">Généré le ' + new Date(r.generatedAt).toLocaleDateString('fr-FR') + '</div></div>' +
+    '<div style="font-size:10px;color:var(--accent);font-weight:700">📂 Voir</div></div>'
+  ).join('');
+}
+
+function loadSavedReport(idx) {
+  const reports = getReportHistory();
+  const r = reports[idx];
+  if (!r) return;
+  const zone = document.getElementById('rapport-content');
+  if (zone) zone.innerHTML = r.html;
+  const el = document.getElementById('rapport-week-label');
+  if (el) el.textContent = r.label;
+  showToast('📂 ' + r.label + ' chargé');
+}
+
+function printReport() {
+  const zone = document.getElementById('rapport-printable');
+  if (!zone) { showToast('⚠ Génère d'abord un rapport'); return; }
+  const win = window.open('','_print','width=800,height=600');
+  win.document.write('<!DOCTYPE html><html><head><style>body{background:#0d1117;color:#e2e8f0;font-family:Rajdhani,sans-serif;padding:20px;} :root{--accent:#00d4ff;--surface:#1a2332;--surface2:#0f172a;--border:#2d3748;--text:#e2e8f0;--muted:#64748b;} @media print{body{background:white!important;color:black!important;}}</style></head><body>' + zone.outerHTML + '<script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);}<\/script></body></html>');
+  win.document.close();
 }
 
 // Load remarks
@@ -6175,6 +6404,10 @@ function bootApp() {
   document.getElementById('xp-val').textContent = xp;
   renderHistory();
   loadRemarks();
+  // Init rapport
+  const rapportLabel = document.getElementById('rapport-week-label');
+  if (rapportLabel) rapportLabel.textContent = getReportWeekRange(0).label;
+  renderSavedReports();
 }
 
 initFirebase();
