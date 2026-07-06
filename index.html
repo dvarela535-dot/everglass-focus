@@ -2168,24 +2168,38 @@
         <div class="line"></div>
       </div>
 
-      <!-- Sélecteur de semaine -->
-      <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px">
-        <button class="counter-btn minus" onclick="shiftReportWeek(-1)" style="width:32px;height:32px">◀</button>
-        <span id="rapport-week-label" style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:var(--text);min-width:180px;text-align:center">Chargement…</span>
-        <button class="counter-btn plus" onclick="shiftReportWeek(1)" style="width:32px;height:32px">▶</button>
+      <!-- Sélecteur de période -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <!-- Navigation semaine rapide -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
+          <button class="counter-btn minus" onclick="shiftReportWeek(-1)" style="width:32px;height:32px">◀</button>
+          <span id="rapport-week-label" style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;color:var(--text);min-width:180px;text-align:center">Chargement…</span>
+          <button class="counter-btn plus" onclick="shiftReportWeek(1)" style="width:32px;height:32px">▶</button>
+        </div>
+        <!-- Dates libres -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px">
+            <div style="font-size:10px;color:var(--muted);font-weight:700;margin-bottom:4px;text-transform:uppercase">Du</div>
+            <input type="date" id="rapport-date-start" onchange="onReportDateChange()" style="width:100%;box-sizing:border-box;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600">
+          </div>
+          <div style="flex:1;min-width:120px">
+            <div style="font-size:10px;color:var(--muted);font-weight:700;margin-bottom:4px;text-transform:uppercase">Au</div>
+            <input type="date" id="rapport-date-end" onchange="onReportDateChange()" style="width:100%;box-sizing:border-box;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;padding-top:14px">
+            <button onclick="setReportThisWeek()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--accent);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Cette semaine</button>
+            <button onclick="setReportLastWeek()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Semaine dernière</button>
+          </div>
+        </div>
       </div>
 
       <div id="rapport-content"></div>
 
       <div style="display:flex;gap:10px;margin-top:20px;justify-content:center">
-        <button class="leadcat-btn green" onclick="generateReport()" style="max-width:220px">🔄 Générer</button>
-        <button class="leadcat-btn cyan" onclick="printReport()" style="max-width:220px">🖨️ Télécharger PDF</button>
-        <!-- Historique des rapports -->
-      <div style="margin-top:24px">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📁 Rapports précédents</div>
-        <div id="saved-reports-list"><div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun rapport généré</div></div>
+        <button class="leadcat-btn green" onclick="generateReport()">🔄 Générer</button>
+        <button class="leadcat-btn cyan" onclick="printReport()">🖨️ Télécharger PDF</button>
       </div>
-    </div>
+
       <!-- Historique des rapports -->
       <div style="margin-top:24px">
         <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📁 Rapports précédents</div>
@@ -5359,6 +5373,7 @@ function cancelPerduPopup() {
 
 let reportWeekOffset = 0;
 
+// Retourne { days:[], label } pour une semaine ISO (offset=0 = semaine en cours)
 function getReportWeekRange(offset) {
   const now = new Date();
   const day = (now.getDay() + 6) % 7;
@@ -5377,12 +5392,69 @@ function getReportWeekRange(offset) {
   return { days, label: 'Semaine ' + wn + ' — du ' + fmt(days[0]) + ' au ' + fmt(days[6]) + ' ' + year };
 }
 
+// Retourne { days:[], label } pour une plage de dates libres
+function getReportCustomRange(startIso, endIso) {
+  const days = [];
+  const cur = new Date(startIso + 'T12:00:00');
+  const end = new Date(endIso + 'T12:00:00');
+  while (cur <= end && days.length <= 31) {
+    days.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  const fmt = d => new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  const year = new Date(endIso+'T12:00:00').getFullYear();
+  return { days, label: 'Du ' + fmt(startIso) + ' au ' + fmt(endIso) + ' ' + year };
+}
+
+// Met à jour les inputs date avec la semaine courante du sélecteur
+function syncDateInputsFromWeek() {
+  const { days } = getReportWeekRange(reportWeekOffset);
+  const s = document.getElementById('rapport-date-start');
+  const e = document.getElementById('rapport-date-end');
+  if (s) s.value = days[0];
+  if (e) e.value = days[6];
+  const el = document.getElementById('rapport-week-label');
+  const fmt = d => new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  const year = new Date(days[6]+'T12:00:00').getFullYear();
+  const wn = getWeekNumber(new Date(days[0]+'T12:00:00'));
+  if (el) el.textContent = 'Semaine ' + wn + ' — du ' + fmt(days[0]) + ' au ' + fmt(days[6]) + ' ' + year;
+}
+
 function shiftReportWeek(delta) {
   reportWeekOffset += delta;
   if (reportWeekOffset > 0) reportWeekOffset = 0;
-  const { label } = getReportWeekRange(reportWeekOffset);
+  syncDateInputsFromWeek();
+}
+
+function setReportThisWeek() {
+  reportWeekOffset = 0;
+  syncDateInputsFromWeek();
+}
+
+function setReportLastWeek() {
+  reportWeekOffset = -1;
+  syncDateInputsFromWeek();
+}
+
+// Quand l'utilisateur change manuellement les dates
+function onReportDateChange() {
+  const s = document.getElementById('rapport-date-start');
+  const e = document.getElementById('rapport-date-end');
+  if (!s || !e || !s.value || !e.value) return;
   const el = document.getElementById('rapport-week-label');
-  if (el) el.textContent = label;
+  const fmt = d => new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  const year = new Date(e.value+'T12:00:00').getFullYear();
+  if (el) el.textContent = 'Du ' + fmt(s.value) + ' au ' + fmt(e.value) + ' ' + year;
+}
+
+// Retourne la plage active (dates depuis les inputs)
+function getActiveReportRange() {
+  const s = document.getElementById('rapport-date-start');
+  const e = document.getElementById('rapport-date-end');
+  if (s && e && s.value && e.value) {
+    return getReportCustomRange(s.value, e.value);
+  }
+  return getReportWeekRange(reportWeekOffset);
 }
 
 function getReportHistory() {
@@ -5411,7 +5483,7 @@ function collectWeekData(days) {
 }
 
 function generateReport() {
-  const { days, label } = getReportWeekRange(reportWeekOffset);
+  const { days, label } = getActiveReportRange();
   const data = collectWeekData(days);
   const totalRdv = data.reduce((a,d)=>a+d.rdv, 0);
   const totalAppels = data.reduce((a,d)=>a+d.appels, 0);
@@ -6411,8 +6483,7 @@ function bootApp() {
   renderHistory();
   loadRemarks();
   // Init rapport
-  const rapportLabel = document.getElementById('rapport-week-label');
-  if (rapportLabel) rapportLabel.textContent = getReportWeekRange(0).label;
+  syncDateInputsFromWeek();
   renderSavedReports();
 }
 
