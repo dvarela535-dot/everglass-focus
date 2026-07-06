@@ -5431,9 +5431,9 @@ function generateReport() {
     const joursActifs = data.filter(d=>d.actif).length || 1;
     const moy = (totalRdv/joursActifs).toFixed(1);
     analyse = totalRdv + ' RDV décrochés sur la semaine, soit une moyenne de ' + moy + '/jour actif. ';
-    if (tauxConv >= 40) analyse += 'Excellent taux de conversion (' + tauxConv + '%) — qualité d'appel au top. ';
+    if (tauxConv >= 40) analyse += 'Excellent taux de conversion (' + tauxConv + '%) — qualité d\'appel au top. ';
     else if (tauxConv >= 20) analyse += 'Taux de conversion correct (' + tauxConv + '%) — encore de la marge pour progresser. ';
-    else if (tauxConv > 0) analyse += 'Taux de conversion faible (' + tauxConv + '%) — le volume d'appels est là, mais il faut travailler la qualification. ';
+    else if (tauxConv > 0) analyse += 'Taux de conversion faible (' + tauxConv + '%) — le volume d\'appels est là, mais il faut travailler la qualification. ';
     if (bestDay && bestDay.rdv >= 2) analyse += 'Meilleure journée : ' + bestDayLabel + ' avec ' + bestDay.rdv + ' RDV. ';
     if (perduEntries.length > 0) analyse += 'Principal motif de perte : "' + perduEntries[0][0] + '" (' + perduEntries[0][1] + ' fois).';
   }
@@ -5441,7 +5441,7 @@ function generateReport() {
   if (totalRdv >= 25) conclusion = '🔥 Semaine de feu ! Tu es au-dessus des objectifs — maintiens cette dynamique.';
   else if (totalRdv >= 15) conclusion = '💪 Bonne semaine, tu es dans les clous. Pousser 2-3 appels de plus par jour ferait la différence.';
   else if (totalRdv >= 5) conclusion = '📈 Semaine moyenne. Identifie les créneaux où tu décroches le plus et concentre-toi dessus.';
-  else conclusion = '⚡ Semaine difficile. Reprends les fondamentaux : volume d'appels et pitch d'accroche.';
+  else conclusion = '⚡ Semaine difficile. Reprends les fondamentaux : volume d\'appels et pitch d\'accroche.';
   const avatarDisplay = localStorage.getItem('eg_avatar_chosen_' + currentIdentity) || '🦁';
   const nom = currentIdentity || 'Commercial';
   const rowRdv = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">🎯 RDV</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);font-weight:800;color:' + (d.rdv>0?'var(--accent)':'var(--muted)') + '">' + (d.rdv||'—') + '</td>').join('') + '</tr>';
@@ -5520,7 +5520,7 @@ function loadSavedReport(idx) {
 
 function printReport() {
   const zone = document.getElementById('rapport-printable');
-  if (!zone) { showToast('⚠ Génère d'abord un rapport'); return; }
+  if (!zone) { showToast('⚠ Génère d\'abord un rapport'); return; }
   const win = window.open('','_print','width=800,height=600');
   win.document.write('<!DOCTYPE html><html><head><style>body{background:#0d1117;color:#e2e8f0;font-family:Rajdhani,sans-serif;padding:20px;} :root{--accent:#00d4ff;--surface:#1a2332;--surface2:#0f172a;--border:#2d3748;--text:#e2e8f0;--muted:#64748b;} @media print{body{background:white!important;color:black!important;}}</style></head><body>' + zone.outerHTML + '<script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);}<\/script></body></html>');
   win.document.close();
@@ -5730,10 +5730,16 @@ function initIdentity() {
     return;
   }
 
-  // Lien commercial personnel : connexion IMMÉDIATE, pas d'attente Firebase
+  // Lien commercial personnel : connexion DIRECTE sans aucun picker
   if (urlCommercial) {
-    resolveIdentity(urlCommercial);
-    // Sync en arrière-plan pour créer/mettre à jour le doc Firebase si besoin
+    currentIdentity = urlCommercial;
+    localStorage.setItem('eg_identity', urlCommercial);
+    // Marquer avatar comme OK si pas déjà fait (on peut le changer dans l'app)
+    if (!localStorage.getItem('eg_avatar_chosen_' + urlCommercial)) {
+      localStorage.setItem('eg_avatar_chosen_' + urlCommercial, '1');
+    }
+    applyIdentity();
+    // Sync Firebase en arrière-plan
     syncCommerciauxListFromCloud(freshList => {
       if (!freshList.find(c => c.name === urlCommercial)) {
         upsertCommercialCloud(urlCommercial, '🦁', () => {});
