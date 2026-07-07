@@ -2293,6 +2293,11 @@
       <button class="leadcat-btn cyan" onclick="rdvFixeAdd('slack')">Slack</button>
       <button class="leadcat-btn green" onclick="rdvFixeAdd('appel_naturel')" style="grid-column:span 2;">Appel naturel</button>
     </div>
+    <!-- Zone suppression RDV -->
+    <div id="rdv-remove-zone" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🗑 Supprimer un RDV</div>
+      <div id="rdv-remove-btns" class="leadcat-grid"></div>
+    </div>
     <button class="leadcat-cancel" onclick="toggleRdvFixePopup()">Annuler</button>
   </div>
 </div>
@@ -2439,7 +2444,8 @@ const CONVERSION_ITEMS = [
 ];
 const GESTION_ITEMS = [
   { key: 'docs_recup', label: 'Docs récupérés', xp: 3 },
-  { key: 'violet_gris', label: 'Refixé : Violet & Gris', xp: 2 },
+  { key: 'refixe_violet', label: 'Refixé Violet 🟣', xp: 2 },
+  { key: 'refixe_gris', label: 'Refixé Gris ⬜', xp: 2 },
   { key: 'annulation', label: 'Annuler RDV + pourquoi', xp: 1 },
   { key: 'dossier_resolve', label: 'Nbr de dossier résolvé', xp: 4 },
   { key: 'comment_fb', label: 'Commentaire FB traité', xp: 2 },
@@ -2514,6 +2520,8 @@ function initState() {
   state = {};
   all.forEach(item => state[item.key] = 0);
   state.leads_appeles_log = [];
+  state.refixe_violet = state.refixe_violet || 0;
+  state.refixe_gris = state.refixe_gris || 0;
   state.rdv_fixe_log = [];
   state.perdu_log = [];
   state.annulation_log = [];
@@ -3466,7 +3474,51 @@ let pendingRdvSource = null;
 
 function toggleRdvFixePopup() {
   const pop = document.getElementById('rdvfixe-popup');
-  if (pop) pop.classList.toggle('open');
+  if (!pop) return;
+  const isOpen = pop.classList.contains('open');
+  if (!isOpen) renderRdvRemoveZone();
+  pop.classList.toggle('open');
+}
+
+function renderRdvRemoveZone() {
+  const zone = document.getElementById('rdv-remove-zone');
+  const btns = document.getElementById('rdv-remove-btns');
+  if (!zone || !btns) return;
+  const available = RDV_FIXE_SOURCES.filter(src => (state[src.key] || 0) > 0);
+  if (available.length === 0) { zone.style.display = 'none'; return; }
+  zone.style.display = 'block';
+  btns.innerHTML = available.map(src =>
+    '<button class="leadcat-btn" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171" onclick="removeRdvBySource(\u0027' + src.id + '\u0027)">' +
+    src.label + ' <span style="font-weight:800;font-size:16px">(' + (state[src.key]||0) + ')</span></button>'
+  ).join('');
+}
+
+function removeRdvBySource(sourceId) {
+  const src = RDV_FIXE_SOURCES.find(s => s.id === sourceId);
+  if (!src || (state[src.key] || 0) <= 0) return;
+  state[src.key] = Math.max(0, (state[src.key] || 0) - 1);
+  if (state.rdv_fixe_log) {
+    const logCopy = [...state.rdv_fixe_log];
+    const idx = logCopy.reverse().findIndex(e => (typeof e === 'string' ? e : e.source) === sourceId);
+    if (idx !== -1) {
+      const realIdx = state.rdv_fixe_log.length - 1 - idx;
+      const removed = state.rdv_fixe_log.splice(realIdx, 1)[0];
+      const villeId = removed && removed.ville;
+      if (villeId) {
+        state['ville_' + villeId] = Math.max(0, (state['ville_' + villeId] || 0) - 1);
+        const vEl = document.getElementById('vval-' + villeId);
+        if (vEl) vEl.textContent = state['ville_' + villeId];
+        updateVillesTotal();
+      }
+    }
+  }
+  const el = document.getElementById('val-' + src.key); if (el) el.textContent = state[src.key];
+  const cel = document.getElementById('callval-' + src.key); if (cel) cel.textContent = state[src.key];
+  updateRdvFixeDisplay();
+  updateAll();
+  saveStorage();
+  showToast('RDV ' + src.label + ' supprime');
+  renderRdvRemoveZone();
 }
 
 function computeRdvFixeTotal() {
@@ -5474,107 +5526,280 @@ function collectWeekData(days) {
       const entry = history.find(h => h.iso === iso);
       if (entry) { s = JSON.parse(JSON.stringify(entry.state)); dayXp = entry.xp || 0; }
     }
-    const rdv = s ? computeRdvTotal(s) : 0;
-    const appels = s ? ((s.leads_appeles||0)+(s.appel_naturel||0)) : 0;
-    const perdus = s ? (s.perdu||0) : 0;
-    const perdu_log = s ? (s.perdu_log||[]) : [];
-    return { iso, s, rdv, appels, perdus, perdu_log, xp: dayXp, actif: !!s };
+    if (!s) return { iso, s: null, rdv: 0, appels: 0, appels_nouveau: 0, appels_aappeler: 0, appels_slack: 0, perdus: 0, perdu_log: [], xp: 0, actif: false };
+    const log = s.leads_appeles_log || [];
+    const appels_nouveau  = log.filter(e => e.category === 'nouveau').reduce((a,e) => a+(e.count||1), 0);
+    const appels_aappeler = log.filter(e => e.category === 'aappeler').reduce((a,e) => a+(e.count||1), 0);
+    const appels_slack    = log.filter(e => e.category === 'slack').reduce((a,e) => a+(e.count||1), 0);
+    return {
+      iso, s, xp: dayXp, actif: true,
+      rdv: computeRdvTotal(s),
+      appels: (s.leads_appeles||0) + (s.appel_naturel||0),
+      appels_nouveau, appels_aappeler, appels_slack,
+      perdus: s.perdu||0,
+      perdu_log: s.perdu_log||[]
+    };
   });
+}
+
+function computeRatiosMoyenne(weekData) {
+  const tot = (key) => weekData.reduce((a,d) => a + (d.s ? (d.s[key]||0) : 0), 0);
+  const totD = (key) => weekData.reduce((a,d) => a + (d[key]||0), 0);
+  const rdv_leads    = tot('rdv_leads');
+  const rdv_aappeler = tot('rdv_aappeler');
+  const rdv_slacks   = tot('rdv_slacks');
+  const ap_nouveau   = totD('appels_nouveau');
+  const ap_aappeler  = totD('appels_aappeler');
+  const ap_slack     = totD('appels_slack');
+  const r1 = rdv_leads    > 0 ? ap_nouveau   / rdv_leads    : null;
+  const r2 = rdv_aappeler > 0 ? ap_aappeler  / rdv_aappeler : null;
+  const r3 = rdv_slacks   > 0 ? ap_slack     / rdv_slacks   : null;
+  const ratios = [r1, r2, r3].filter(r => r !== null);
+  const moyenne = ratios.length > 0 ? (ratios.reduce((a,b)=>a+b,0) / ratios.length) : null;
+  return { r1, r2, r3, moyenne, rdv_leads, rdv_aappeler, rdv_slacks, ap_nouveau, ap_aappeler, ap_slack };
 }
 
 function generateReport() {
   const { days, label } = getActiveReportRange();
   const data = collectWeekData(days);
-  const totalRdv = data.reduce((a,d)=>a+d.rdv, 0);
-  const totalAppels = data.reduce((a,d)=>a+d.appels, 0);
-  const totalPerdus = data.reduce((a,d)=>a+d.perdus, 0);
-  const tauxConv = totalAppels > 0 ? Math.round(totalRdv/totalAppels*100) : 0;
-  const perduByType = {};
-  data.forEach(d => { d.perdu_log.forEach(e => { const k = e.note||'Non précisé'; perduByType[k]=(perduByType[k]||0)+1; }); });
-  const perduEntries = Object.entries(perduByType).sort((a,b)=>b[1]-a[1]);
   const DAY_LABELS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const maxRdv = Math.max(...data.map(d=>d.rdv), 1);
-  const bestDay = data.reduce((best,d) => d.rdv > (best?best.rdv:-1) ? d : best, null);
-  const bestDayLabel = bestDay ? DAY_LABELS[days.indexOf(bestDay.iso)] : '—';
+  const fmt = iso => iso.slice(5);
+  const tot = (key) => data.reduce((a,d) => a + (d.s ? (d.s[key]||0) : 0), 0);
+  const totalRdv    = data.reduce((a,d) => a + d.rdv, 0);
+  const totalAppels = data.reduce((a,d) => a + d.appels, 0);
+  const totalPerdus = data.reduce((a,d) => a + d.perdus, 0);
+  const totalClients = tot('rdv_leads') + tot('rdv_slacks') + tot('rdv_aappeler') + tot('rdv_gris') + tot('rdv_violet') + tot('rdv_stocks') + tot('rdv_2eme') + tot('rdv_msg_fb') + tot('rdv_dm_fb') + tot('appel_naturel_rdv');
+  const ratios = computeRatiosMoyenne(data);
+  const ratioStr = ratios.moyenne !== null ? ratios.moyenne.toFixed(1) : '\u2014';
+  const bestDay = data.reduce((best,d) => (d.rdv > (best ? best.rdv : -1)) ? d : best, null);
+  const bestDayLabel = bestDay ? DAY_LABELS[days.indexOf(bestDay.iso)] + ' ' + fmt(bestDay.iso) : '\u2014';
+  const bS = bestDay && bestDay.s ? bestDay.s : null;
+  const recordCompo = bS ? [
+    { label:'Nouveaux leads', val:bS.rdv_leads||0,      color:'#00d4ff' },
+    { label:'A appeler',      val:bS.rdv_aappeler||0,   color:'#60a5fa' },
+    { label:'Slack',          val:bS.rdv_slacks||0,     color:'#34d399' },
+    { label:'Refixe violet',  val:bS.rdv_violet||0,     color:'#a78bfa' },
+    { label:'Refixe gris',    val:bS.rdv_gris||0,       color:'#94a3b8' },
+    { label:'FB',             val:(bS.rdv_msg_fb||0)+(bS.rdv_dm_fb||0), color:'#3b82f6' },
+    { label:'Appel naturel',  val:bS.appel_naturel_rdv||0, color:'#10b981' },
+    { label:'Recommandation', val:bS.recommandation||0, color:'#f59e0b' },
+    { label:'Stock',          val:bS.rdv_stocks||0,     color:'#fb923c' },
+    { label:'2eme voiture',   val:bS.rdv_2eme||0,       color:'#e879f9' },
+  ].filter(c => c.val > 0) : [];
+  const recordTotal = bestDay ? bestDay.rdv : 0;
+  const recordAppels = bS ? (bS.leads_appeles||0) : 0;
+  const recordRatio = recordTotal > 0 && recordAppels > 0 ? (recordAppels/recordTotal).toFixed(1) : '\u2014';
+  const perduByType = {};
+  data.forEach(d => d.perdu_log.forEach(e => { const k = e.note || 'Non precise'; perduByType[k]=(perduByType[k]||0)+1; }));
+  const perduEntries = Object.entries(perduByType).sort((a,b)=>b[1]-a[1]);
+  const joursActifs = data.filter(d=>d.actif).length || 1;
+  const moy = (totalRdv/joursActifs).toFixed(1);
   let analyse = '';
   if (totalRdv === 0) {
-    analyse = 'Aucun RDV enregistré cette semaine. Vérifie que tes données ont bien été saisies.';
+    analyse = 'Aucun RDV enregistre cette periode.';
   } else {
-    const joursActifs = data.filter(d=>d.actif).length || 1;
-    const moy = (totalRdv/joursActifs).toFixed(1);
-    analyse = totalRdv + ' RDV décrochés sur la semaine, soit une moyenne de ' + moy + '/jour actif. ';
-    if (tauxConv >= 40) analyse += 'Excellent taux de conversion (' + tauxConv + '%) — qualité d\'appel au top. ';
-    else if (tauxConv >= 20) analyse += 'Taux de conversion correct (' + tauxConv + '%) — encore de la marge pour progresser. ';
-    else if (tauxConv > 0) analyse += 'Taux de conversion faible (' + tauxConv + '%) — le volume d\'appels est là, mais il faut travailler la qualification. ';
-    if (bestDay && bestDay.rdv >= 2) analyse += 'Meilleure journée : ' + bestDayLabel + ' avec ' + bestDay.rdv + ' RDV. ';
-    if (perduEntries.length > 0) analyse += 'Principal motif de perte : "' + perduEntries[0][0] + '" (' + perduEntries[0][1] + ' fois).';
+    analyse = totalRdv + ' RDV sur la periode, moyenne ' + moy + '/jour actif. ';
+    if (ratios.moyenne !== null) {
+      if (ratios.moyenne <= 6) analyse += 'Excellent ratio : ' + ratioStr + ' appels/RDV — tres efficace. ';
+      else if (ratios.moyenne <= 10) analyse += 'Ratio correct : ' + ratioStr + ' appels/RDV — encore de la marge. ';
+      else analyse += 'Ratio a ameliorer : ' + ratioStr + ' appels/RDV — travailler la qualification. ';
+    }
+    if (bestDay && bestDay.rdv >= 2) analyse += 'Record : ' + bestDayLabel + ' avec ' + bestDay.rdv + ' RDV. ';
+    if (perduEntries.length > 0) analyse += 'Motif principal : ' + perduEntries[0][0] + ' (' + perduEntries[0][1] + 'x).';
   }
-  let conclusion = '';
-  if (totalRdv >= 25) conclusion = '🔥 Semaine de feu ! Tu es au-dessus des objectifs — maintiens cette dynamique.';
-  else if (totalRdv >= 15) conclusion = '💪 Bonne semaine, tu es dans les clous. Pousser 2-3 appels de plus par jour ferait la différence.';
-  else if (totalRdv >= 5) conclusion = '📈 Semaine moyenne. Identifie les créneaux où tu décroches le plus et concentre-toi dessus.';
-  else conclusion = '⚡ Semaine difficile. Reprends les fondamentaux : volume d\'appels et pitch d\'accroche.';
-  const avatarDisplay = localStorage.getItem('eg_avatar_chosen_' + currentIdentity) || '🦁';
   const nom = currentIdentity || 'Commercial';
-  const rowRdv = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">🎯 RDV</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);font-weight:800;color:' + (d.rdv>0?'var(--accent)':'var(--muted)') + '">' + (d.rdv||'—') + '</td>').join('') + '</tr>';
-  const rowApp = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">📞 Appels</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:var(--text)">' + (d.actif?d.appels:'—') + '</td>').join('') + '</tr>';
-  const rowPer = '<tr><td style="padding:8px 6px;border:1px solid var(--border);color:var(--muted);font-weight:600">❌ Perdus</td>' + data.map(d=>'<td style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:' + (d.perdus>0?'#f87171':'var(--muted)') + '">' + (d.actif?d.perdus:'—') + '</td>').join('') + '</tr>';
-  const thRow = '<tr style="background:var(--surface2)"><th style="padding:8px 6px;text-align:left;border:1px solid var(--border);color:var(--muted);font-weight:700">Jour</th>' + data.map((d,i)=>'<th style="padding:8px 6px;text-align:center;border:1px solid var(--border);color:' + (d.actif?'var(--text)':'var(--muted)') + '">' + DAY_LABELS[i] + '<br><span style="font-size:10px;color:var(--muted)">' + d.iso.slice(5) + '</span></th>').join('') + '</tr>';
-  const statsCards = [
-    {label:'RDV TOTAL',val:totalRdv,icon:'🎯',color:'var(--accent)'},
-    {label:'APPELS',val:totalAppels,icon:'📞',color:'#60a5fa'},
-    {label:'PERDUS',val:totalPerdus,icon:'❌',color:'#f87171'},
-    {label:'CONVERSION',val:tauxConv+'%',icon:'📊',color:'#34d399'},
-  ].map(c=>'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center"><div style="font-size:20px">' + c.icon + '</div><div style="font-size:22px;font-weight:800;color:' + c.color + '">' + c.val + '</div><div style="font-size:10px;color:var(--muted);font-weight:600">' + c.label + '</div></div>').join('');
-  const bars = data.map((d,i)=>{
-    const h = maxRdv > 0 ? Math.round((d.rdv/maxRdv)*70)+10 : 10;
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:11px;font-weight:700;color:var(--accent)">' + (d.rdv||'') + '</div><div style="width:100%;height:' + h + 'px;background:' + (d.rdv>0?'var(--accent)':'var(--surface2)') + ';border-radius:4px 4px 0 0;opacity:' + (d.actif?1:0.3) + '"></div><div style="font-size:10px;color:var(--muted)">' + DAY_LABELS[i] + '</div></div>';
-  }).join('');
-  const perduSection = perduEntries.length > 0 ? '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">❌ Motifs de perte</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + perduEntries.map(([k,v])=>'<div style="background:var(--surface2);border:1px solid #f87171;border-radius:8px;padding:5px 10px;font-size:12px;color:var(--text)"><span style="color:#f87171;font-weight:700">' + v + '×</span> ' + k + '</div>').join('') + '</div></div>' : '';
-  const html = '<div style="font-family:Rajdhani,sans-serif;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px" id="rapport-printable">' +
-    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid var(--accent)">' +
-    '<div style="font-size:36px">' + avatarDisplay + '</div>' +
-    '<div><div style="font-size:20px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:1px">' + nom + '</div>' +
-    '<div style="font-size:12px;color:var(--muted)">' + label + '</div></div>' +
-    '<div style="margin-left:auto;font-size:11px;color:var(--muted)">Généré le ' + new Date().toLocaleDateString('fr-FR') + '</div></div>' +
-    '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">📅 Activité par jour</div>' +
-    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead>' + thRow + '</thead><tbody>' + rowRdv + rowApp + rowPer + '</tbody></table></div></div>' +
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">' + statsCards + '</div>' +
-    '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">📊 RDV par jour</div>' +
-    '<div style="display:flex;align-items:flex-end;gap:6px;height:80px">' + bars + '</div></div>' +
-    perduSection +
-    '<div style="margin-bottom:14px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px">' +
-    '<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">🔍 Analyse</div>' +
-    '<div style="font-size:13px;color:var(--text);line-height:1.6">' + analyse + '</div></div>' +
-    '<div style="background:var(--surface2);border-left:3px solid #34d399;border-radius:8px;padding:12px 14px">' +
-    '<div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">🏆 Coach</div>' +
-    '<div style="font-size:13px;color:var(--text);line-height:1.6">' + conclusion + '</div></div></div>';
-
+  const today = new Date().toLocaleDateString('fr-FR');
+  const BG = '#080d14', SURF = '#0f1923', SURF2 = '#141f2e', BOR = '#1e2d42';
+  const ACC = '#00d4ff', PUR = '#7c3aed', GRN = '#10b981', RED = '#ef4444', AMB = '#f59e0b', TEXT = '#e2e8f0', MUTED = '#4a6080';
+  const TD  = 'padding:7px 5px;border:1px solid '+BOR+';text-align:center;background:'+SURF+';';
+  const TDL = 'padding:7px 10px;border:1px solid '+BOR+';text-align:left;background:'+SURF2+';border-left:3px solid '+ACC+';font-size:10px;font-weight:600;color:'+MUTED+';text-transform:uppercase;letter-spacing:.4px;';
+  const TH  = 'padding:8px 5px;text-align:center;font-family:Rajdhani,sans-serif;font-weight:700;font-size:10px;letter-spacing:1px;text-transform:uppercase;background:'+SURF2+';border:1px solid '+BOR+';color:'+MUTED+';';
+  function thRow(accentColor) {
+    let r = '<th style="'+TH+'text-align:left;border-left:3px solid '+accentColor+';color:'+TEXT+';">Indicateur</th>';
+    r += data.map((_,i) => '<th style="'+TH+'">'+DAY_LABELS[i]+'<br><span style="font-size:9px;font-weight:400;color:'+MUTED+'">'+fmt(data[i].iso)+'</span></th>').join('');
+    r += '<th style="'+TH+'color:'+accentColor+';background:'+SURF2+'">TOTAL</th>';
+    return r;
+  }
+  function tRow(icon, lbl, key, color) {
+    const vals = data.map(d => {
+      const v = d.s ? (d.s[key]||0) : null;
+      if (v === null) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
+      return '<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:'+(v>0?color:MUTED)+'">'+(v||'\u2014')+'</td>';
+    }).join('');
+    const total = tot(key);
+    return '<tr><td style="'+TDL+'">'+icon+' '+lbl+'</td>'+vals+'<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:800;font-size:14px;color:'+color+'">'+total+'</td></tr>';
+  }
+  function tRowDays(icon, lbl, dayVals, total, color) {
+    const vals = dayVals.map(v => {
+      if (v === null) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
+      return '<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:'+(v>0?color:MUTED)+'">'+(v||'\u2014')+'</td>';
+    }).join('');
+    return '<tr><td style="'+TDL+'">'+icon+' '+lbl+'</td>'+vals+'<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:800;font-size:14px;color:'+color+'">'+total+'</td></tr>';
+  }
+  function tSub(text, color) {
+    return '<tr><td colspan="'+(data.length+2)+'" style="'+TD+'background:'+color+'18;color:'+color+';font-family:Rajdhani,sans-serif;font-weight:700;font-size:9px;letter-spacing:2px;text-transform:uppercase;text-align:center;padding:4px">'+text+'</td></tr>';
+  }
+  function tRowSplit(lbl, keyM, keyS, color) {
+    const vals = data.map(d => {
+      if (!d.s) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
+      const m=d.s[keyM]||0, s2=d.s[keyS]||0;
+      return '<td style="'+TD+'font-size:10px;padding:3px 5px"><span style="font-family:Rajdhani,sans-serif;font-weight:700;color:'+(m>0?color:MUTED)+'">'+m+'</span><br><span style="font-size:9px;color:'+MUTED+'">s/'+s2+'</span></td>';
+    }).join('');
+    const totM = data.reduce((a,d)=>a+(d.s?(d.s[keyM]||0):0),0);
+    const totS = data.reduce((a,d)=>a+(d.s?(d.s[keyS]||0):0),0);
+    return '<tr><td style="'+TDL.replace('border-left:3px solid '+ACC,'border-left:3px solid '+color)+'">'+lbl+'</td>'+vals+'<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:800;color:'+color+'">'+totM+'<br><span style="font-size:9px;font-weight:600;color:'+MUTED+'">s/'+totS+'</span></td></tr>';
+  }
+  function tRowVG() {
+    const vals = data.map(d => {
+      if (!d.s) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
+      const v=d.s.refixe_violet||0, g=d.s.refixe_gris||0;
+      return '<td style="'+TD+'font-size:10px;padding:3px 5px"><span style="font-family:Rajdhani,sans-serif;font-weight:700;color:'+(v>0?'#a78bfa':MUTED)+'">🟣'+v+'</span><br><span style="font-size:9px;color:'+(g>0?'#94a3b8':MUTED)+'">⬜'+g+'</span></td>';
+    }).join('');
+    const totV = data.reduce((a,d)=>a+(d.s?(d.s.refixe_violet||0):0),0);
+    const totG = data.reduce((a,d)=>a+(d.s?(d.s.refixe_gris||0):0),0);
+    return '<tr><td style="'+TDL.replace('border-left:3px solid '+ACC,'border-left:3px solid #8b5cf6')+'">Refixe 🟣/⬜</td>'+vals+'<td style="'+TD+'font-size:11px;font-weight:800"><span style="color:#a78bfa">'+totV+'</span> / <span style="color:#94a3b8">'+totG+'</span></td></tr>';
+  }
+  const apNouv  = data.map(d => d.actif ? d.appels_nouveau  : null);
+  const apAapp  = data.map(d => d.actif ? d.appels_aappeler : null);
+  const apSlack = data.map(d => d.actif ? d.appels_slack    : null);
+  // Hero KPI
+  const kpi = '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:20px">'+
+    '<div style="background:linear-gradient(135deg,rgba(0,212,255,.08),rgba(124,58,237,.08));border:1px solid '+ACC+';border-radius:12px;padding:16px;text-align:center">'+
+    '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:'+MUTED+';margin-bottom:4px">⚡ Appels / RDV</div>'+
+    '<div style="font-family:Rajdhani,sans-serif;font-size:50px;font-weight:800;color:'+ACC+';line-height:1;text-shadow:0 0 20px rgba(0,212,255,.3)">'+ratioStr+'</div>'+
+    '<div style="font-size:10px;color:'+MUTED+';margin-top:4px">moy. nouveau / a rappeler / slack</div></div>'+
+    '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
+    '<div style="font-size:16px">🎯</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+GRN+'">'+totalRdv+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">RDV Total</div></div>'+
+    '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
+    '<div style="font-size:16px">📞</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+ACC+'">'+totalAppels+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">Appels</div></div>'+
+    '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
+    '<div style="font-size:16px">❌</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+RED+'">'+totalPerdus+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">Perdus</div></div>'+
+    '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
+    '<div style="font-size:16px">👥</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+AMB+'">'+totalClients+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">Clients</div></div>'+
+    '</div>';
+  const sep = (txt, color) => '<div style="font-family:Rajdhani,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:'+color+';display:flex;align-items:center;gap:10px;margin-bottom:10px">'+txt+'<div style="flex:1;height:1px;background:'+BOR+'"></div></div>';
+  const glow = '<div style="height:1px;background:linear-gradient(90deg,transparent,'+ACC+',transparent);margin:16px 0;opacity:.3"></div>';
+  // Tableau Conversion
+  const tConv = '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px"><thead><tr>'+thRow(ACC)+'</tr></thead><tbody>'+
+    tRow('','N ont jamais repondu','jamais_repondu',AMB)+
+    tRow('❌','Perdu + pourquoi','perdu',RED)+
+    tRow('📍','Autres villes','autres_villes',MUTED)+
+    tRowDays('📋','Nouveaux leads appeles',apNouv,ratios.ap_nouveau,ACC)+
+    tRowDays('🔄','A appeler appeles',apAapp,ratios.ap_aappeler,'#60a5fa')+
+    tRowDays('💬','Slack appeles',apSlack,ratios.ap_slack,GRN)+
+    tRow('📥','Leads entrants jour','leads_entrant','#60a5fa')+
+    tRow('🎯','RDV pris des leads','rdv_leads',ACC)+
+    tRow('🔄','RDV pris des a appeler','rdv_aappeler','#60a5fa')+
+    tRow('💬','RDV pris des slacks','rdv_slacks',GRN)+
+    tRow('🟣','RDV pris refixes violet','rdv_violet','#a78bfa')+
+    tRow('⬜','RDV pris refixes gris','rdv_gris','#94a3b8')+
+    tRow('⭐','Recommandation','recommandation',AMB)+
+    tRow('📦','RDV stocks','rdv_stocks','#fb923c')+
+    tRow('🚗','RDV 2eme voiture','rdv_2eme','#e879f9')+
+    tSub('Facebook','#3b82f6')+
+    tRow('💬','Messages FB recus','msg_fb_recu','#3b82f6')+
+    tRow('📩','RDV messages FB','rdv_msg_fb','#3b82f6')+
+    tRow('📤','DM FB envoyes','dm_fb','#60a5fa')+
+    tRow('📩','RDV DM FB envoyes','rdv_dm_fb','#60a5fa')+
+    tSub('Appel Naturel',GRN)+
+    tRow('📞','Appel naturel recu','appel_naturel',GRN)+
+    tRow('🎯','Appel naturel RDV','appel_naturel_rdv',GRN)+
+    '</tbody></table>';
+  // Tableau Gestion (marrons/bleus avec split ville venissieux comme exemple, on prend le total all villes)
+  function totSplit(prefix) {
+    // Somme de tous les préfixes de ville pour bm/bs/mm/ms
+    const villes = ['venissieux','grenoble','douai','bethune','chambery','voiron','annemasse','manosque','saintetienne'];
+    return data.map(d => {
+      if (!d.s) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
+      const m = villes.reduce((a,v)=>a+(d.s[prefix+'m_'+v]||0),0);
+      const s2= villes.reduce((a,v)=>a+(d.s[prefix+'s_'+v]||0),0);
+      return '<td style="'+TD+'font-size:10px;padding:3px 5px"><span style="font-family:Rajdhani,sans-serif;font-weight:700;color:'+(m>0?'#b45309':MUTED)+'">'+m+'</span><br><span style="font-size:9px;color:'+MUTED+'">s/'+s2+'</span></td>';
+    }).join('');
+  }
+  function totSplitTotal(prefix, colorStr) {
+    const villes = ['venissieux','grenoble','douai','bethune','chambery','voiron','annemasse','manosque','saintetienne'];
+    const totM = data.reduce((a,d)=>d.s?a+villes.reduce((b,v)=>b+(d.s[prefix+'m_'+v]||0),0):a,0);
+    const totS = data.reduce((a,d)=>d.s?a+villes.reduce((b,v)=>b+(d.s[prefix+'s_'+v]||0),0):a,0);
+    return '<td style="'+TD+'font-family:Rajdhani,sans-serif;font-weight:800;color:'+colorStr+'">'+totM+'<br><span style="font-size:9px;font-weight:600;color:'+MUTED+'">s/'+totS+'</span></td>';
+  }
+  const tGest = '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px"><thead><tr>'+thRow(PUR)+'</tr></thead><tbody>'+
+    '<tr><td style="'+TDL.replace('border-left:3px solid '+ACC,'border-left:3px solid #b45309')+'">Marrons matin/soir</td>'+totSplit('m')+totSplitTotal('m','#b45309')+'</tr>'+
+    '<tr><td style="'+TDL.replace('border-left:3px solid '+ACC,'border-left:3px solid #3b82f6')+'">Bleus matin/soir</td>'+totSplit('b')+totSplitTotal('b','#3b82f6')+'</tr>'+
+    tRow('📄','Docs recup','docs_recup',PUR)+
+    tRowVG()+
+    tRow('🚫','Annulations RDV','annulation',RED)+
+    tRow('✅','Dossiers resolus','dossier_resolve',GRN)+
+    tRow('💬','Commentaires FB traites','comment_fb','#3b82f6')+
+    '</tbody></table>';
+  // Record
+  let recordHtml = '';
+  if (recordTotal > 0) {
+    const maxC = Math.max(...recordCompo.map(c=>c.val),1);
+    const compoLines = recordCompo.map(c => {
+      const pct = Math.round(c.val/maxC*100);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'+
+        '<div style="font-size:10px;color:'+MUTED+';width:120px">'+c.label+'</div>'+
+        '<div style="flex:1;height:6px;background:'+SURF2+';border-radius:3px;overflow:hidden">'+
+        '<div style="width:'+pct+'%;height:100%;background:'+c.color+';border-radius:3px"></div></div>'+
+        '<div style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:12px;color:'+c.color+';width:16px;text-align:right">'+c.val+'</div></div>';
+    }).join('');
+    recordHtml = '<div style="background:linear-gradient(135deg,rgba(0,212,255,.04),rgba(124,58,237,.04));border:1px solid '+ACC+';border-radius:12px;padding:14px;margin-bottom:12px">'+
+      '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:'+AMB+';margin-bottom:10px">⭐ Record de la periode</div>'+
+      '<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">'+
+      '<div style="text-align:center;min-width:80px"><div style="font-family:Rajdhani,sans-serif;font-size:48px;font-weight:800;color:'+AMB+';line-height:1;text-shadow:0 0 20px rgba(245,158,11,.4)">'+recordTotal+'</div>'+
+      '<div style="font-size:11px;color:'+MUTED+';font-weight:600">RDV — '+bestDayLabel+'</div></div>'+
+      '<div style="width:1px;height:60px;background:'+BOR+';flex-shrink:0"></div>'+
+      '<div style="flex:1;min-width:180px">'+compoLines+'</div>'+
+      '<div style="width:1px;height:60px;background:'+BOR+';flex-shrink:0"></div>'+
+      '<div style="text-align:center;min-width:60px"><div style="font-family:Rajdhani,sans-serif;font-size:26px;font-weight:800;color:'+TEXT+'">'+recordAppels+'</div>'+
+      '<div style="font-size:9px;color:'+MUTED+';font-weight:600">APPELS</div>'+
+      '<div style="font-family:Rajdhani,sans-serif;font-size:12px;font-weight:800;color:'+ACC+';margin-top:2px">'+recordRatio+' appels/RDV</div></div>'+
+      '</div></div>';
+  }
+  // Perdus
+  const perduHtml = perduEntries.length > 0
+    ? '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px;margin-bottom:12px">'+
+      '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:'+RED+';margin-bottom:8px">❌ Motifs de perte — total : '+totalPerdus+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      perduEntries.map(([k,v]) => '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;font-size:11px;color:'+TEXT+'"><span style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:13px;color:'+RED+'">'+v+'x</span> '+k+'</div>').join('')+
+      '</div></div>'
+    : '';
+  const analyseHtml = '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px">'+
+    '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:'+ACC+';margin-bottom:6px">🔍 Analyse</div>'+
+    '<div style="font-size:12px;color:'+TEXT+';line-height:1.7;border-left:3px solid '+ACC+';padding-left:10px">'+analyse+'</div></div>';
+  const hdr = '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid '+ACC+'">'+
+    '<div><div style="font-family:Rajdhani,sans-serif;font-size:32px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:'+ACC+';text-shadow:0 0 30px rgba(0,212,255,.3);line-height:1">SUPPORT <span style="color:#fff">BRIEF</span></div>'+
+    '<div style="font-size:10px;color:'+MUTED+';margin-top:3px;letter-spacing:1px;text-transform:uppercase">EverGlass — Suivi commercial</div></div>'+
+    '<div style="text-align:right"><div style="font-family:Rajdhani,sans-serif;font-size:20px;font-weight:800;color:'+ACC+';letter-spacing:1px;margin-bottom:4px">'+nom.toUpperCase()+'</div>'+
+    '<div style="font-size:11px;color:'+MUTED+'">'+label+'</div>'+
+    '<div style="font-size:10px;color:'+MUTED+';margin-top:2px">Genere le '+today+'</div></div></div>';
+  const html = '<div id="rapport-printable" style="font-family:Rajdhani,sans-serif;background:'+BG+';color:'+TEXT+';padding:20px;min-height:100vh">'+
+    hdr + kpi + glow + sep('⚡ Conversion', ACC) + tConv + glow + sep('🛠 Gestion', PUR) + tGest +
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><div style="background:'+SURF2+';border:1px solid '+PUR+';border-radius:10px;padding:8px 18px;display:flex;align-items:center;gap:12px">'+
+    '<span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:'+MUTED+'">Total Clients</span>'+
+    '<span style="font-family:Rajdhani,sans-serif;font-size:26px;font-weight:800;color:'+PUR+'">'+totalClients+'</span></div></div>'+
+    glow + recordHtml + perduHtml + analyseHtml + '</div>';
   const zone = document.getElementById('rapport-content');
   if (zone) zone.innerHTML = html;
-
   const reports = getReportHistory();
   const key = days[0];
   const idx = reports.findIndex(r => r.weekStart === key);
-  const entry = { weekStart: key, weekEnd: days[6], label, html, generatedAt: new Date().toISOString() };
+  const entry = { weekStart: key, weekEnd: days[days.length-1], label, html, generatedAt: new Date().toISOString() };
   if (idx >= 0) reports[idx] = entry; else reports.unshift(entry);
   saveReportHistory(reports);
   renderSavedReports();
-  showToast('✅ Rapport généré !');
+  showToast('Brief genere !');
 }
 
 function renderSavedReports() {
   const container = document.getElementById('saved-reports-list');
   if (!container) return;
   const reports = getReportHistory();
-  if (reports.length === 0) {
-    container.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun rapport généré</div>';
-    return;
-  }
+  if (reports.length === 0) { container.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Aucun brief genere</div>'; return; }
   container.innerHTML = reports.map((r, i) =>
-    '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer" onclick="loadSavedReport(' + i + ')">' +
-    '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text)">' + r.label + '</div>' +
-    '<div style="font-size:11px;color:var(--muted)">Généré le ' + new Date(r.generatedAt).toLocaleDateString('fr-FR') + '</div></div>' +
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer" onclick="loadSavedReport('+i+')">'+
+    '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text)">'+r.label+'</div>'+
+    '<div style="font-size:11px;color:var(--muted)">Genere le '+new Date(r.generatedAt).toLocaleDateString('fr-FR')+'</div></div>'+
     '<div style="font-size:10px;color:var(--accent);font-weight:700">📂 Voir</div></div>'
   ).join('');
 }
@@ -5585,18 +5810,23 @@ function loadSavedReport(idx) {
   if (!r) return;
   const zone = document.getElementById('rapport-content');
   if (zone) zone.innerHTML = r.html;
-  const el = document.getElementById('rapport-week-label');
-  if (el) el.textContent = r.label;
-  showToast('📂 ' + r.label + ' chargé');
+  showToast('Brief charge');
 }
 
 function printReport() {
   const zone = document.getElementById('rapport-printable');
-  if (!zone) { showToast('⚠ Génère d\'abord un rapport'); return; }
-  const win = window.open('','_print','width=800,height=600');
-  win.document.write('<!DOCTYPE html><html><head><style>body{background:#0d1117;color:#e2e8f0;font-family:Rajdhani,sans-serif;padding:20px;} :root{--accent:#00d4ff;--surface:#1a2332;--surface2:#0f172a;--border:#2d3748;--text:#e2e8f0;--muted:#64748b;} @media print{body{background:white!important;color:black!important;}}</style></head><body>' + zone.outerHTML + '<script>window.onload=function(){window.print();setTimeout(()=>window.close(),500);}<\/script></body></html>');
+  if (!zone) { showToast('Genere un brief avant de telecharger'); return; }
+  const { days, label } = getActiveReportRange();
+  const start = days[0];
+  const end = days[days.length-1];
+  const nom = currentIdentity || 'commercial';
+  const filename = 'brief_' + nom + '_' + start + '_au_' + end + '.html';
+  const css = ':root{--accent:#00d4ff;--surface:#0f1923;--surface2:#141f2e;--border:#1e2d42;--text:#e2e8f0;--muted:#4a6080;} *{box-sizing:border-box;margin:0;padding:0;} body{background:#080d14;color:#e2e8f0;font-family:Rajdhani,sans-serif;} @media print{body{background:white!important;color:#111!important;} *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}';
+  const win = window.open('','_print','width=900,height=700');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+filename.replace('.html','')+'</title><link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;800&display=swap" rel="stylesheet"><style>'+css+'</style></head><body>'+zone.outerHTML+'<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script></body></html>');
   win.document.close();
 }
+
 
 // Load remarks
 function loadRemarks() {
