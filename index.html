@@ -5838,28 +5838,46 @@ function printReport() {
   const end = days[days.length-1];
   const nom = currentIdentity || 'commercial';
   const filename = 'brief_' + nom + '_' + start + '_au_' + end + '.html';
-  const css = [
-    ':root{--accent:#00d4ff;--surface:#0f1923;--surface2:#141f2e;--border:#1e2d42;--text:#e2e8f0;--muted:#4a6080;}',
-    '*{box-sizing:border-box;margin:0;padding:0;}',
-    'body{background:#080d14;color:#e2e8f0;font-family:Rajdhani,sans-serif;}',
-    '@media print{',
-    '  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
-    '  body{background:white!important;color:#111!important;}',
-    '  div,td,th{background:white!important;border-color:#ccc!important;}',
-    '  div[style*="gradient"]{background:white!important;}',
-    '  [style*="background:linear"]{background:white!important;}',
-    '  td,th{border:1px solid #ccc!important;color:#111!important;}',
-    '  [style*="color:#00d4ff"],[style*="color:'+ACC+'"]{color:#0066aa!important;}',
-    '  [style*="color:#10b981"]{color:#006633!important;}',
-    '  [style*="color:#ef4444"]{color:#cc0000!important;}',
-    '  [style*="color:#f59e0b"]{color:#996600!important;}',
-    '  [style*="color:#7c3aed"]{color:#4400aa!important;}',
-    '  [style*="text-shadow"]{text-shadow:none!important;}',
-    '  [style*="box-shadow"]{box-shadow:none!important;}',
-    '}'
-  ].join('');
+
+  // Swap couleurs dark → light directement dans le HTML (les inline styles ne peuvent pas etre overrides par CSS)
+  let html = zone.outerHTML;
+  // Backgrounds sombres → blanc/gris clair
+  html = html.replace(/background:#080d14/g,  'background:#ffffff');
+  html = html.replace(/background:#0f1923/g,  'background:#f7f8fa');
+  html = html.replace(/background:#141f2e/g,  'background:#eef0f4');
+  html = html.replace(/background:rgba\(0,212,255,[^)]+\)/g, 'background:rgba(0,100,180,0.06)');
+  html = html.replace(/background:rgba\(124,58,237,[^)]+\)/g, 'background:rgba(80,0,180,0.04)');
+  html = html.replace(/background:rgba\(239,68,68,[^)]+\)/g, 'background:rgba(200,0,0,0.06)');
+  html = html.replace(/background:linear-gradient[^;"]*/g, 'background:#f0f4ff');
+  // Borders sombres → gris clair
+  html = html.replace(/border:1px solid #1e2d42/g, 'border:1px solid #cccccc');
+  html = html.replace(/border-bottom:2px solid #00d4ff/g, 'border-bottom:2px solid #0066aa');
+  html = html.replace(/border-left:3px solid #1e2d42/g, 'border-left:3px solid #aaaaaa');
+  // Couleurs de texte sombre → lisibles sur blanc
+  html = html.replace(/color:#e2e8f0/g,  'color:#111111');
+  html = html.replace(/color:#4a6080/g,  'color:#555555');
+  html = html.replace(/color:#00d4ff/g,  'color:#0055aa');
+  html = html.replace(/color:#10b981/g,  'color:#006633');
+  html = html.replace(/color:#ef4444/g,  'color:#cc0000');
+  html = html.replace(/color:#f59e0b/g,  'color:#885500');
+  html = html.replace(/color:#7c3aed/g,  'color:#4400aa');
+  html = html.replace(/color:#a78bfa/g,  'color:#6600cc');
+  html = html.replace(/color:#94a3b8/g,  'color:#555566');
+  html = html.replace(/color:#60a5fa/g,  'color:#0044cc');
+  html = html.replace(/color:#34d399/g,  'color:#006644');
+  html = html.replace(/color:#3b82f6/g,  'color:#003dcc');
+  html = html.replace(/color:#e879f9/g,  'color:#8800aa');
+  html = html.replace(/color:#fb923c/g,  'color:#aa4400');
+  html = html.replace(/color:#b45309/g,  'color:#7a3800');
+  html = html.replace(/color:#8b5cf6/g,  'color:#4400aa');
+  html = html.replace(/color:#f87171/g,  'color:#cc0000');
+  // text-shadow
+  html = html.replace(/text-shadow:[^;"]+/g, 'text-shadow:none');
+  html = html.replace(/box-shadow:[^;"]+/g,  'box-shadow:none');
+
+  const css = '*{box-sizing:border-box;margin:0;padding:0;} body{background:#fff;color:#111;font-family:Rajdhani,sans-serif;} @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}';
   const win = window.open('','_print','width=900,height=700');
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+filename.replace('.html','')+'</title><link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;800&display=swap" rel="stylesheet"><style>'+css+'</style></head><body>'+zone.outerHTML+'<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script></body></html>');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+filename.replace('.html','')+'</title><link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;800&display=swap" rel="stylesheet"><style>'+css+'</style></head><body>'+html+'<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script></body></html>');
   win.document.close();
 }
 
