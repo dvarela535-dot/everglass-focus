@@ -5661,11 +5661,11 @@ function generateReport() {
   function tRowVG() {
     const vals = data.map(d => {
       if (!d.s) return '<td style="'+TD+'color:'+MUTED+'">'+'\u2014'+'</td>';
-      const v=d.s.refixe_violet||0, g=d.s.refixe_gris||0;
+      const v=Math.max(d.s.rdv_violet||0,d.s.refixe_violet||0), g=Math.max(d.s.rdv_gris||0,d.s.refixe_gris||0);
       return '<td style="'+TD+'font-size:10px;padding:3px 5px"><span style="font-family:Rajdhani,sans-serif;font-weight:700;color:'+(v>0?'#a78bfa':MUTED)+'">🟣'+v+'</span><br><span style="font-size:9px;color:'+(g>0?'#94a3b8':MUTED)+'">⬜'+g+'</span></td>';
     }).join('');
-    const totV = data.reduce((a,d)=>a+(d.s?(d.s.refixe_violet||0):0),0);
-    const totG = data.reduce((a,d)=>a+(d.s?(d.s.refixe_gris||0):0),0);
+    const totV = data.reduce((a,d)=>a+(d.s?Math.max(d.s.rdv_violet||0,d.s.refixe_violet||0):0),0);
+    const totG = data.reduce((a,d)=>a+(d.s?Math.max(d.s.rdv_gris||0,d.s.refixe_gris||0):0),0);
     return '<tr><td style="'+TDL.replace('border-left:3px solid '+ACC,'border-left:3px solid #8b5cf6')+'">Refixe 🟣/⬜</td>'+vals+'<td style="'+TD+'font-size:11px;font-weight:800"><span style="color:#a78bfa">'+totV+'</span> / <span style="color:#94a3b8">'+totG+'</span></td></tr>';
   }
   const apNouv  = data.map(d => d.actif ? d.appels_nouveau  : null);
