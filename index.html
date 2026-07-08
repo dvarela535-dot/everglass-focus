@@ -3683,6 +3683,9 @@ function change(key, delta, xpVal) {
     if (RDV_KEYS.includes(key)) playChaChing();
   }
   if (RDV_KEYS.includes(key)) updateRdvFixeDisplay();
+  // Synchro Gestion : violet/gris en mode appel remplissent aussi refixe_*
+  if (delta > 0 && key === 'rdv_violet') { state.refixe_violet = (state.refixe_violet||0)+1; const rv=document.getElementById('val-refixe_violet'); if(rv) rv.textContent=state.refixe_violet; }
+  if (delta > 0 && key === 'rdv_gris')   { state.refixe_gris   = (state.refixe_gris  ||0)+1; const rg=document.getElementById('val-refixe_gris');   if(rg) rg.textContent=state.refixe_gris;   }
   updateAll();
   saveStorage();
   // update perdus badge
@@ -5460,6 +5463,7 @@ function getReportCustomRange(startIso, endIso) {
 
 // Met à jour les inputs date avec la semaine courante du sélecteur
 function syncDateInputsFromWeek() {
+  window.reportCustomMode = false; // retour mode semaine
   const { days } = getReportWeekRange(reportWeekOffset);
   const s = document.getElementById('rapport-date-start');
   const e = document.getElementById('rapport-date-end');
@@ -5475,6 +5479,9 @@ function syncDateInputsFromWeek() {
 function shiftReportWeek(delta) {
   reportWeekOffset += delta;
   if (reportWeekOffset > 0) reportWeekOffset = 0;
+  // Réinitialise le mode custom : les flèches reprennent le contrôle
+  const s = document.getElementById('rapport-date-start');
+  const e = document.getElementById('rapport-date-end');
   syncDateInputsFromWeek();
 }
 
@@ -5493,6 +5500,7 @@ function onReportDateChange() {
   const s = document.getElementById('rapport-date-start');
   const e = document.getElementById('rapport-date-end');
   if (!s || !e || !s.value || !e.value) return;
+  window.reportCustomMode = true; // user a saisi manuellement
   const el = document.getElementById('rapport-week-label');
   const fmt = d => new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
   const year = new Date(e.value+'T12:00:00').getFullYear();
@@ -5562,7 +5570,8 @@ function computeRatiosMoyenne(weekData) {
 function generateReport() {
   const { days, label } = getActiveReportRange();
   const data = collectWeekData(days);
-  const DAY_LABELS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  // Label jour depuis la date ISO (évite UNDEFINED sur plage > 7 jours)
+  const dayLabel = iso => new Date(iso+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short'}).replace('.','').replace(/^./,c=>c.toUpperCase());
   const fmt = iso => iso.slice(5);
   const tot = (key) => data.reduce((a,d) => a + (d.s ? (d.s[key]||0) : 0), 0);
   const totalRdv    = data.reduce((a,d) => a + d.rdv, 0);
@@ -5572,7 +5581,7 @@ function generateReport() {
   const ratios = computeRatiosMoyenne(data);
   const ratioStr = ratios.moyenne !== null ? ratios.moyenne.toFixed(1) : '\u2014';
   const bestDay = data.reduce((best,d) => (d.rdv > (best ? best.rdv : -1)) ? d : best, null);
-  const bestDayLabel = bestDay ? DAY_LABELS[days.indexOf(bestDay.iso)] + ' ' + fmt(bestDay.iso) : '\u2014';
+  const bestDayLabel = bestDay ? dayLabel(bestDay.iso) + ' ' + fmt(bestDay.iso) : '\u2014';
   const bS = bestDay && bestDay.s ? bestDay.s : null;
   const recordCompo = bS ? [
     { label:'Nouveaux leads', val:bS.rdv_leads||0,      color:'#00d4ff' },
@@ -5616,7 +5625,7 @@ function generateReport() {
   const TH  = 'padding:8px 5px;text-align:center;font-family:Rajdhani,sans-serif;font-weight:700;font-size:10px;letter-spacing:1px;text-transform:uppercase;background:'+SURF2+';border:1px solid '+BOR+';color:'+MUTED+';';
   function thRow(accentColor) {
     let r = '<th style="'+TH+'text-align:left;border-left:3px solid '+accentColor+';color:'+TEXT+';">Indicateur</th>';
-    r += data.map((_,i) => '<th style="'+TH+'">'+DAY_LABELS[i]+'<br><span style="font-size:9px;font-weight:400;color:'+MUTED+'">'+fmt(data[i].iso)+'</span></th>').join('');
+    r += data.map((d) => '<th style="'+TH+'">'+dayLabel(d.iso)+'<br><span style="font-size:9px;font-weight:400;color:'+MUTED+'">'+fmt(d.iso)+'</span></th>').join('');
     r += '<th style="'+TH+'color:'+accentColor+';background:'+SURF2+'">TOTAL</th>';
     return r;
   }
@@ -5663,11 +5672,19 @@ function generateReport() {
   const apAapp  = data.map(d => d.actif ? d.appels_aappeler : null);
   const apSlack = data.map(d => d.actif ? d.appels_slack    : null);
   // Hero KPI
+  const r1Str = ratios.r1 !== null ? ratios.r1.toFixed(1)+' appels/RDV' : '—';
+  const r2Str = ratios.r2 !== null ? ratios.r2.toFixed(1)+' appels/RDV' : '—';
+  const r3Str = ratios.r3 !== null ? ratios.r3.toFixed(1)+' appels/RDV' : '—';
   const kpi = '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:20px">'+
     '<div style="background:linear-gradient(135deg,rgba(0,212,255,.08),rgba(124,58,237,.08));border:1px solid '+ACC+';border-radius:12px;padding:16px;text-align:center">'+
     '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:'+MUTED+';margin-bottom:4px">⚡ Appels / RDV</div>'+
     '<div style="font-family:Rajdhani,sans-serif;font-size:50px;font-weight:800;color:'+ACC+';line-height:1;text-shadow:0 0 20px rgba(0,212,255,.3)">'+ratioStr+'</div>'+
-    '<div style="font-size:10px;color:'+MUTED+';margin-top:4px">moy. nouveau / a rappeler / slack</div></div>'+
+    '<div style="font-size:10px;color:'+MUTED+';margin-top:6px">moy. nouveau / a rappeler / slack</div>'+
+    '<div style="display:flex;justify-content:center;gap:10px;margin-top:8px;flex-wrap:wrap">'+
+    '<div style="font-size:9px;color:'+ACC+'">📋 Nouveau : '+r1Str+'</div>'+
+    '<div style="font-size:9px;color:#60a5fa">🔄 A rappeler : '+r2Str+'</div>'+
+    '<div style="font-size:9px;color:'+GRN+'">💬 Slack : '+r3Str+'</div></div>'+
+    '</div>'+
     '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
     '<div style="font-size:16px">🎯</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+GRN+'">'+totalRdv+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">RDV Total</div></div>'+
     '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
@@ -5821,7 +5838,26 @@ function printReport() {
   const end = days[days.length-1];
   const nom = currentIdentity || 'commercial';
   const filename = 'brief_' + nom + '_' + start + '_au_' + end + '.html';
-  const css = ':root{--accent:#00d4ff;--surface:#0f1923;--surface2:#141f2e;--border:#1e2d42;--text:#e2e8f0;--muted:#4a6080;} *{box-sizing:border-box;margin:0;padding:0;} body{background:#080d14;color:#e2e8f0;font-family:Rajdhani,sans-serif;} @media print{body{background:white!important;color:#111!important;} *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}';
+  const css = [
+    ':root{--accent:#00d4ff;--surface:#0f1923;--surface2:#141f2e;--border:#1e2d42;--text:#e2e8f0;--muted:#4a6080;}',
+    '*{box-sizing:border-box;margin:0;padding:0;}',
+    'body{background:#080d14;color:#e2e8f0;font-family:Rajdhani,sans-serif;}',
+    '@media print{',
+    '  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '  body{background:white!important;color:#111!important;}',
+    '  div,td,th{background:white!important;border-color:#ccc!important;}',
+    '  div[style*="gradient"]{background:white!important;}',
+    '  [style*="background:linear"]{background:white!important;}',
+    '  td,th{border:1px solid #ccc!important;color:#111!important;}',
+    '  [style*="color:#00d4ff"],[style*="color:'+ACC+'"]{color:#0066aa!important;}',
+    '  [style*="color:#10b981"]{color:#006633!important;}',
+    '  [style*="color:#ef4444"]{color:#cc0000!important;}',
+    '  [style*="color:#f59e0b"]{color:#996600!important;}',
+    '  [style*="color:#7c3aed"]{color:#4400aa!important;}',
+    '  [style*="text-shadow"]{text-shadow:none!important;}',
+    '  [style*="box-shadow"]{box-shadow:none!important;}',
+    '}'
+  ].join('');
   const win = window.open('','_print','width=900,height=700');
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+filename.replace('.html','')+'</title><link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700;800&display=swap" rel="stylesheet"><style>'+css+'</style></head><body>'+zone.outerHTML+'<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};<\/script></body></html>');
   win.document.close();
