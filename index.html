@@ -1887,7 +1887,8 @@
     </div>
   </div>
   <div id="admin-content" class="admin-content">
-    <div id="admin-cards-grid" class="admin-cards-grid"><div id="admin-team-card"></div></div>
+    <div id="admin-team-card" style="margin-bottom:16px"></div>
+    <div id="admin-cards-grid" class="admin-cards-grid"></div>
   </div>
 </div>
 
@@ -6384,6 +6385,7 @@ function subscribeToAllCommercials(names) {
 function renderAdminGrid() {
   const names = Object.keys(adminCommerciauxData);
   const grid = document.getElementById('admin-cards-grid');
+  // Ne pas écraser admin-team-card (il est maintenant au-dessus de la grille)
   grid.innerHTML = names.map(name => {
     const d = adminCommerciauxData[name] || {};
     return adminCardHTML(name, d);
@@ -6486,26 +6488,64 @@ function updateTeamCard() {
   const appelsTotal = (agg.leads_appeles || 0) + (agg.appel_naturel || 0);
   const perdusTotal = agg.perdu || 0;
 
-  el.innerHTML = `<div class="admin-card live" style="border-color:#c084fc;box-shadow:0 0 20px rgba(192,132,252,0.2);cursor:default">
-    <div class="admin-card-avatar">🌐</div>
-    <div class="admin-card-name" style="color:#c084fc">
-      Équipe
-      <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:6px">${actifs}/${nbTotal} en ligne</span>
+  const ratio = rdvTotal > 0 && appelsTotal > 0 ? (appelsTotal/rdvTotal).toFixed(1) : '—';
+
+  el.innerHTML = `<div style="background:var(--surface);border:1px solid #c084fc;border-radius:16px;padding:16px 20px;box-shadow:0 0 24px rgba(192,132,252,0.12)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      <span style="font-size:22px">🌐</span>
+      <span style="font-family:'Rajdhani',sans-serif;font-weight:800;font-size:18px;color:#c084fc;letter-spacing:1px">ÉQUIPE EVERGLASS</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${actifs}/${nbTotal} en ligne · ${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
     </div>
-    <div class="admin-card-stats">
-      <div class="admin-card-stat"><span>RDV total</span><b style="color:var(--green)">${rdvTotal}</b></div>
-      <div class="admin-card-stat"><span>↳ Leads</span><b style="color:#60a5fa">${agg.rdv_leads||0}</b></div>
-      <div class="admin-card-stat"><span>↳ À appeler</span><b style="color:#60a5fa">${agg.rdv_aappeler||0}</b></div>
-      <div class="admin-card-stat"><span>↳ Slack</span><b style="color:#34d399">${agg.rdv_slacks||0}</b></div>
-      <div class="admin-card-stat"><span>↳ Violet</span><b style="color:#a78bfa">${agg.rdv_violet||0}</b></div>
-      <div class="admin-card-stat"><span>↳ Gris</span><b style="color:#94a3b8">${agg.rdv_gris||0}</b></div>
-      <div class="admin-card-stat"><span>↳ Naturel</span><b style="color:#10b981">${agg.appel_naturel_rdv||0}</b></div>
-      <div class="admin-card-stat" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span>Appels</span><b>${appelsTotal}</b></div>
-      <div class="admin-card-stat"><span>Perdus</span><b style="color:var(--red)">${perdusTotal}</b></div>
-      <div class="admin-card-stat"><span>Docs récup</span><b style="color:#7c3aed">${agg.docs_recup||0}</b></div>
-      <div class="admin-card-stat"><span>XP cumulé</span><b style="color:var(--accent)">${xpTotal}</b></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:800;color:#10b981">${rdvTotal}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase">RDV Total</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:800;color:#00d4ff">${appelsTotal}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase">Appels</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:800;color:#ef4444">${perdusTotal}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase">Perdus</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:800;color:#f59e0b">${ratio}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase">Appels/RDV</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:32px;font-weight:800;color:#c084fc">${xpTotal}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase">XP Équipe</div>
+      </div>
     </div>
-    ${renderBleuMarronAdminRows(agg)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:var(--surface2);border-radius:10px;padding:10px">
+        <div style="font-size:10px;font-weight:700;color:#00d4ff;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🎯 RDV par source</div>
+        ${[
+          ['Leads',agg.rdv_leads||0,'#60a5fa'],
+          ['À appeler',agg.rdv_aappeler||0,'#60a5fa'],
+          ['Slack',agg.rdv_slacks||0,'#34d399'],
+          ['Violet',agg.rdv_violet||0,'#a78bfa'],
+          ['Gris',agg.rdv_gris||0,'#94a3b8'],
+          ['Naturel',agg.appel_naturel_rdv||0,'#10b981'],
+          ['Reco',agg.recommandation||0,'#f59e0b'],
+          ['Stock',agg.rdv_stocks||0,'#fb923c'],
+          ['2ème voiture',agg.rdv_2eme||0,'#e879f9'],
+          ['FB',( agg.rdv_msg_fb||0)+(agg.rdv_dm_fb||0),'#3b82f6'],
+        ].map(([l,v,c]) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${l}</span><b style="color:${v>0?c:'var(--muted)'}">${v||'—'}</b></div>`).join('')}
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:10px">
+        <div style="font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🛠 Gestion</div>
+        ${[
+          ['Docs récup',agg.docs_recup||0,'#7c3aed'],
+          ['Annulations',agg.annulation||0,'#ef4444'],
+          ['Dossiers résolus',agg.dossier_resolve||0,'#10b981'],
+          ['Commentaires FB',agg.comment_fb||0,'#3b82f6'],
+          ['Jamais répondu',agg.jamais_repondu||0,'#f59e0b'],
+        ].map(([l,v,c]) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${l}</span><b style="color:${v>0?c:'var(--muted)'}">${v||'—'}</b></div>`).join('')}
+        ${renderBleuMarronAdminRows(agg) ? '<div style="margin-top:8px">'+renderBleuMarronAdminRows(agg)+'</div>' : ''}
+      </div>
+    </div>
   </div>`;
 }
 
