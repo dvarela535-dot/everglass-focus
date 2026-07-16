@@ -6633,8 +6633,45 @@ function openTeamPanel() {
   document.getElementById('admin-panel-title').innerHTML = '🌐 Équipe EverGlass';
   document.getElementById('admin-panel-full-btn').onclick = () => openTeamFullView();
   document.getElementById('admin-analysis-panel').classList.remove('hide');
-  const d = getTeamAggState();
-  renderPanelWithData('Équipe', d);
+  document.getElementById('admin-panel-content').innerHTML = '<div class="admin-panel-loading">⏳ Chargement des données équipe…</div>';
+
+  if (!db) { renderPanelWithData('Équipe', getTeamAggState()); return; }
+
+  const todayIso = getTodayIso();
+  const names = Object.keys(adminCommerciauxData);
+  let remaining = names.length;
+  if (!remaining) { renderPanelWithData('Équipe', getTeamAggState()); return; }
+
+  const refreshPanel = () => renderPanelWithData('Équipe', getTeamAggState());
+
+  // Fetch frais pour tous les commerciaux, puis live subscription
+  names.forEach(name => {
+    db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
+      .get()
+      .then(doc => {
+        if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
+        adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
+        adminCommerciauxData[name].xp    = doc.exists ? (doc.data().xp    || 0)    : 0;
+      })
+      .catch(() => {})
+      .finally(() => {
+        remaining--;
+        if (remaining <= 0) {
+          refreshPanel();
+          // Live subscription pour mises à jour en temps réel
+          const unsubs = names.map(n =>
+            db.collection('commerciaux').doc(n).collection('jours').doc(todayIso)
+              .onSnapshot(doc => {
+                if (!adminCommerciauxData[n]) adminCommerciauxData[n] = {};
+                adminCommerciauxData[n].state = doc.exists ? (doc.data().state || null) : null;
+                adminCommerciauxData[n].xp    = doc.exists ? (doc.data().xp    || 0)    : 0;
+                refreshPanel();
+              }, () => {})
+          );
+          panelUnsubscribe = () => unsubs.forEach(fn => fn());
+        }
+      });
+  });
 }
 
 function applyTeamState() {
@@ -6668,26 +6705,49 @@ function openTeamFullView() {
   badge.classList.add('show');
   document.getElementById('day-next-btn').disabled = true;
 
-  // Appliquer l'état actuel immédiatement
-  applyTeamState();
-
-  // S'abonner aux mises à jour live de tous les commerciaux
-  // → chaque fois qu'un commercial met à jour ses données, la vue team se resynchronise
   if (fullViewUnsubscribe) { fullViewUnsubscribe(); fullViewUnsubscribe = null; }
-  if (db) {
-    const todayIso = getTodayIso();
-    const names = Object.keys(adminCommerciauxData);
-    const unsubs = names.map(name =>
-      db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
-        .onSnapshot(doc => {
-          if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
-          adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
-          adminCommerciauxData[name].xp    = doc.exists ? (doc.data().xp || 0) : 0;
-          applyTeamState(); // recalcule et réinjecte tout
-        }, () => {})
-    );
-    fullViewUnsubscribe = () => unsubs.forEach(fn => fn());
-  }
+
+  if (!db) { applyTeamState(); return; }
+
+  // Fetch frais de TOUS les commerciaux avant d'afficher
+  // (evite les données périmées dans adminCommerciauxData)
+  const todayIso = getTodayIso();
+  const names = Object.keys(adminCommerciauxData);
+  let remaining = names.length;
+
+  if (!remaining) { applyTeamState(); return; }
+
+  const nameEl = document.getElementById('display-name');
+  if (nameEl) nameEl.textContent = '⏳ Chargement équipe…';
+
+  names.forEach(name => {
+    db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
+      .get()
+      .then(doc => {
+        if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
+        adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
+        adminCommerciauxData[name].xp    = doc.exists ? (doc.data().xp    || 0)    : 0;
+      })
+      .catch(() => {})
+      .finally(() => {
+        remaining--;
+        if (remaining <= 0) {
+          // Toutes les données sont fraîches → on applique
+          applyTeamState();
+          // Puis on s'abonne pour les mises à jour en live
+          const unsubs = names.map(n =>
+            db.collection('commerciaux').doc(n).collection('jours').doc(todayIso)
+              .onSnapshot(doc => {
+                if (!adminCommerciauxData[n]) adminCommerciauxData[n] = {};
+                adminCommerciauxData[n].state = doc.exists ? (doc.data().state || null) : null;
+                adminCommerciauxData[n].xp    = doc.exists ? (doc.data().xp    || 0)    : 0;
+                applyTeamState();
+              }, () => {})
+          );
+          fullViewUnsubscribe = () => unsubs.forEach(fn => fn());
+        }
+      });
+  });
 }
 
 function openAnalysisPanel(name) {
