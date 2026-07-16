@@ -6550,7 +6550,7 @@ function updateTeamCard() {
   // Carte team inline dans la grille (même style que les commerciaux)
   const elInline = document.getElementById('admin-team-card-inline');
   if (elInline) {
-    elInline.outerHTML = `<div class="admin-card live" id="admin-team-card-inline" style="border-color:#c084fc;box-shadow:0 0 20px rgba(192,132,252,0.2);cursor:default;order:-1">
+    elInline.outerHTML = `<div class="admin-card live" id="admin-team-card-inline" onclick="openTeamPanel()" style="border-color:#c084fc;box-shadow:0 0 20px rgba(192,132,252,0.2);cursor:pointer;order:-1">
       <div class="admin-card-avatar">🌐</div>
       <div class="admin-card-name" style="color:#c084fc">Équipe <span style="font-size:10px;color:var(--muted);font-weight:400">${actifs}/${nbTotal}</span></div>
       <div class="admin-card-stats">
@@ -6571,6 +6571,71 @@ function updateTeamCard() {
 }
 
 // ── PANNEAU ANALYSE (vue rapide d'un commercial) ──
+function getTeamAggState() {
+  // Agrège tous les states des commerciaux
+  const ALL_KEYS = [
+    'leads_appeles','appel_naturel','jamais_repondu','perdu','autres_villes','leads_entrant',
+    'rdv_leads','rdv_aappeler','rdv_slacks','rdv_violet','rdv_gris','recommandation',
+    'rdv_stocks','rdv_2eme','appel_naturel_rdv','rdv_msg_fb','rdv_dm_fb',
+    'msg_fb_recu','dm_fb','docs_recup','annulation','dossier_resolve','comment_fb',
+    'leads_appeles_log','perdu_log'
+  ];
+  const agg = {};
+  ALL_KEYS.forEach(k => agg[k] = 0);
+  agg.leads_appeles_log = [];
+  agg.perdu_log = [];
+  ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0); });
+  let xpTotal = 0;
+  Object.entries(adminCommerciauxData).forEach(([name, d]) => {
+    const s = d.state || {};
+    ALL_KEYS.filter(k => k !== 'leads_appeles_log' && k !== 'perdu_log').forEach(k => agg[k] += s[k] || 0);
+    if (s.leads_appeles_log) agg.leads_appeles_log = agg.leads_appeles_log.concat(s.leads_appeles_log);
+    if (s.perdu_log) agg.perdu_log = agg.perdu_log.concat(s.perdu_log);
+    ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0); });
+    xpTotal += d.xp || 0;
+  });
+  return { state: agg, xp: xpTotal, avatar: '🌐' };
+}
+
+function openTeamPanel() {
+  if (panelUnsubscribe) { panelUnsubscribe(); panelUnsubscribe = null; }
+  document.getElementById('admin-panel-title').innerHTML = '🌐 Équipe EverGlass';
+  document.getElementById('admin-panel-full-btn').onclick = () => openTeamFullView();
+  document.getElementById('admin-analysis-panel').classList.remove('hide');
+  const d = getTeamAggState();
+  renderPanelWithData('Équipe', d);
+}
+
+function openTeamFullView() {
+  closeAnalysisPanel();
+  // Masque admin, affiche l'app en mode lecture team
+  document.getElementById('admin-page').classList.add('hide');
+  document.getElementById('main-topbar').style.display = '';
+  let badge = document.getElementById('full-view-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'full-view-badge';
+    badge.className = 'day-edit-badge';
+    badge.style.background = 'rgba(192,132,252,0.15)';
+    badge.style.borderColor = 'rgba(192,132,252,0.4)';
+    badge.style.color = '#c084fc';
+    badge.onclick = () => closeFullView();
+    document.getElementById('day-edit-badge').insertAdjacentElement('afterend', badge);
+  }
+  badge.textContent = '🌐 Vue Équipe (lecture seule) — retour admin';
+  badge.classList.add('show');
+  document.getElementById('day-next-btn').disabled = true;
+  // Injecter l'état agrégé dans l'app
+  const { state: aggState, xp: xpTotal } = getTeamAggState();
+  state = JSON.parse(JSON.stringify(aggState));
+  xp = xpTotal;
+  rebuildAllGrids();
+  updateAll();
+  updateLevel();
+  const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
+  const nameEl = document.getElementById('display-name'); if (nameEl) nameEl.textContent = '🌐 Équipe EverGlass';
+}
+
 function openAnalysisPanel(name) {
   const d = adminCommerciauxData[name] || {};
   document.getElementById('admin-panel-title').innerHTML = `${d.avatar || '🦁'} ${name}`;
