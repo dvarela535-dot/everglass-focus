@@ -1888,7 +1888,7 @@
   </div>
   <div id="admin-content" class="admin-content">
     <div id="admin-team-card" style="margin-bottom:16px"></div>
-    <div id="admin-cards-grid" class="admin-cards-grid"></div>
+    <div id="admin-cards-grid" class="admin-cards-grid"><div id="admin-team-card-inline"></div></div>
   </div>
 </div>
 
@@ -6385,8 +6385,7 @@ function subscribeToAllCommercials(names) {
 function renderAdminGrid() {
   const names = Object.keys(adminCommerciauxData);
   const grid = document.getElementById('admin-cards-grid');
-  // Ne pas écraser admin-team-card (il est maintenant au-dessus de la grille)
-  grid.innerHTML = names.map(name => {
+  grid.innerHTML = '<div id="admin-team-card-inline"></div>' + names.map(name => {
     const d = adminCommerciauxData[name] || {};
     return adminCardHTML(name, d);
   }).join('');
@@ -6547,6 +6546,28 @@ function updateTeamCard() {
       </div>
     </div>
   </div>`;
+
+  // Carte team inline dans la grille (même style que les commerciaux)
+  const elInline = document.getElementById('admin-team-card-inline');
+  if (elInline) {
+    elInline.outerHTML = `<div class="admin-card live" id="admin-team-card-inline" style="border-color:#c084fc;box-shadow:0 0 20px rgba(192,132,252,0.2);cursor:default;order:-1">
+      <div class="admin-card-avatar">🌐</div>
+      <div class="admin-card-name" style="color:#c084fc">Équipe <span style="font-size:10px;color:var(--muted);font-weight:400">${actifs}/${nbTotal}</span></div>
+      <div class="admin-card-stats">
+        <div class="admin-card-stat"><span>RDV total</span><b style="color:var(--green)">${rdvTotal}</b></div>
+        <div class="admin-card-stat"><span>↳ Leads</span><b style="color:#60a5fa">${agg.rdv_leads||0}</b></div>
+        <div class="admin-card-stat"><span>↳ À appeler</span><b style="color:#60a5fa">${agg.rdv_aappeler||0}</b></div>
+        <div class="admin-card-stat"><span>↳ Slack</span><b style="color:#34d399">${agg.rdv_slacks||0}</b></div>
+        <div class="admin-card-stat"><span>↳ Violet</span><b style="color:#a78bfa">${agg.rdv_violet||0}</b></div>
+        <div class="admin-card-stat"><span>↳ Gris</span><b style="color:#94a3b8">${agg.rdv_gris||0}</b></div>
+        <div class="admin-card-stat"><span>↳ Naturel</span><b style="color:#10b981">${agg.appel_naturel_rdv||0}</b></div>
+        <div class="admin-card-stat" style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border)"><span>Appels</span><b>${appelsTotal}</b></div>
+        <div class="admin-card-stat"><span>Ratio</span><b style="color:#f59e0b">${ratio} app/RDV</b></div>
+        <div class="admin-card-stat"><span>Perdus</span><b style="color:var(--red)">${perdusTotal}</b></div>
+        <div class="admin-card-stat"><span>XP équipe</span><b style="color:#c084fc">${xpTotal}</b></div>
+      </div>
+    </div>`;
+  }
 }
 
 // ── PANNEAU ANALYSE (vue rapide d'un commercial) ──
