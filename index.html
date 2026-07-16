@@ -2528,10 +2528,14 @@ function initState() {
   state.appel_naturel_direct = 0;
   state.appel_naturel_rappeler = 0;
   state.leads_entrants_par_ville = {};
-  state.rdv_aappeler = state.rdv_aappeler || 0;
   state.goalCelebrated = false;
-  // villes
-  [...ALL_VILLES.map(v => v.id), 'autre'].forEach(v => { if (!state['ville_'+v]) state['ville_'+v] = 0; });
+  // Toutes les sources RDV à 0
+  RDV_KEYS.forEach(k => { if (state[k] === undefined) state[k] = 0; });
+  // villes RDV + leads entrants par ville
+  [...ALL_VILLES.map(v => v.id), 'autre'].forEach(v => {
+    if (state['ville_'+v]      === undefined) state['ville_'+v]      = 0;
+    if (state['leadsville_'+v] === undefined) state['leadsville_'+v] = 0;
+  });
   // bleus/marrons par ville
   ALL_VILLES.forEach(v => {
     ['bm','bs','mm','ms'].forEach(k => { if (state[k+'_'+v.id] === undefined) state[k+'_'+v.id] = 0; });
@@ -6120,6 +6124,15 @@ function initIdentity() {
   }
 }
 
+function manualLogin() {
+  const input = document.getElementById('manual-name-input');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name || name.length < 2) { input.style.borderColor = 'var(--red)'; return; }
+  input.style.borderColor = '';
+  selectIdentity(name);
+}
+
 function renderIdentityPicker() {
   const list = document.getElementById('identity-list');
   document.getElementById('identity-picker').classList.remove('hide');
@@ -6574,24 +6587,43 @@ function updateTeamCard() {
 function getTeamAggState() {
   // Agrège tous les states des commerciaux
   const ALL_KEYS = [
-    'leads_appeles','appel_naturel','jamais_repondu','perdu','autres_villes','leads_entrant',
+    'leads_appeles','appel_naturel','appel_naturel_direct','appel_naturel_rappeler',
+    'jamais_repondu','perdu','autres_villes','leads_entrant',
     'rdv_leads','rdv_aappeler','rdv_slacks','rdv_violet','rdv_gris','recommandation',
     'rdv_stocks','rdv_2eme','appel_naturel_rdv','rdv_msg_fb','rdv_dm_fb',
     'msg_fb_recu','dm_fb','docs_recup','annulation','dossier_resolve','comment_fb',
-    'leads_appeles_log','perdu_log'
+    'leads_appeles_log','perdu_log','annulation_log'
   ];
   const agg = {};
   ALL_KEYS.forEach(k => agg[k] = 0);
   agg.leads_appeles_log = [];
   agg.perdu_log = [];
-  ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0); });
+  ALL_VILLES.forEach(v => {
+    ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0);
+    agg['ville_'+v.id] = 0;
+    agg['leadsville_'+v.id] = 0;
+  });
   let xpTotal = 0;
   Object.entries(adminCommerciauxData).forEach(([name, d]) => {
     const s = d.state || {};
     ALL_KEYS.filter(k => k !== 'leads_appeles_log' && k !== 'perdu_log').forEach(k => agg[k] += s[k] || 0);
     if (s.leads_appeles_log) agg.leads_appeles_log = agg.leads_appeles_log.concat(s.leads_appeles_log);
     if (s.perdu_log) agg.perdu_log = agg.perdu_log.concat(s.perdu_log);
-    ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0); });
+    ALL_VILLES.forEach(v => {
+      ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0);
+      agg['ville_'+v.id]     += s['ville_'+v.id]     || 0;
+      agg['leadsville_'+v.id] += s['leadsville_'+v.id] || 0;
+    });
+    // logs concatenés pour aggregateBilan
+    if (s.rdv_fixe_log)    { if (!agg.rdv_fixe_log)    agg.rdv_fixe_log    = []; agg.rdv_fixe_log    = agg.rdv_fixe_log.concat(s.rdv_fixe_log); }
+    if (s.annulation_log)  { if (!agg.annulation_log)  agg.annulation_log  = []; agg.annulation_log  = agg.annulation_log.concat(s.annulation_log); }
+    // leads_entrants_par_ville : merge par clé
+    if (s.leads_entrants_par_ville) {
+      if (!agg.leads_entrants_par_ville) agg.leads_entrants_par_ville = {};
+      Object.entries(s.leads_entrants_par_ville).forEach(([vid, n]) => {
+        agg.leads_entrants_par_ville[vid] = (agg.leads_entrants_par_ville[vid] || 0) + (n || 0);
+      });
+    }
     xpTotal += d.xp || 0;
   });
   return { state: agg, xp: xpTotal, avatar: '🌐' };
