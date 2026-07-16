@@ -2444,8 +2444,7 @@ const CONVERSION_ITEMS = [
 ];
 const GESTION_ITEMS = [
   { key: 'docs_recup', label: 'Docs récupérés', xp: 3 },
-  { key: 'refixe_violet', label: 'Refixé Violet 🟣', xp: 2 },
-  { key: 'refixe_gris', label: 'Refixé Gris ⬜', xp: 2 },
+
   { key: 'annulation', label: 'Annuler RDV + pourquoi', xp: 1 },
   { key: 'dossier_resolve', label: 'Nbr de dossier résolvé', xp: 4 },
   { key: 'comment_fb', label: 'Commentaire FB traité', xp: 2 },
@@ -2612,11 +2611,18 @@ function loadStorage() {
       state = { ...state, ...JSON.parse(JSON.stringify(todayEntry.state)) };
       xp = todayEntry.xp || 0;
     } else {
-      // rétrocompatibilité : anciennes données jamais migrées vers le système d'historique unifié
-      const saved = localStorage.getItem(lsKey('eg_state'));
+      // Nouveau jour sans entrée — vérifier si l'ancien eg_state date d'aujourd'hui
       const savedXp = localStorage.getItem(lsKey('eg_xp'));
-      if (saved) state = { ...state, ...JSON.parse(saved) };
-      if (savedXp) { const d = JSON.parse(savedXp); xp = d.xp || 0; }
+      if (savedXp) {
+        const d = JSON.parse(savedXp);
+        // Charger seulement si la sauvegarde date d'aujourd'hui
+        if (d.date === new Date().toDateString()) {
+          const saved = localStorage.getItem(lsKey('eg_state'));
+          if (saved) state = { ...state, ...JSON.parse(saved) };
+          xp = d.xp || 0;
+        }
+        // Sinon : nouveau jour → on repart sur initState() (déjà appelé avant)
+      }
     }
     const savedConf = localStorage.getItem(lsKey('eg_config'));
     if (savedConf) config = { ...config, ...JSON.parse(savedConf) };
