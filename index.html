@@ -6072,7 +6072,7 @@ function initIdentity() {
   const params = new URLSearchParams(location.search);
   const urlAdmin = params.get('admin');
   const urlCommercial = params.get('commercial');
-  if (urlAdmin || urlCommercial) history.replaceState({}, '', location.pathname);
+  // On conserve les params dans l'URL pour que le refresh fonctionne
 
   const resolveIdentity = (name) => {
     currentIdentity = name;
@@ -6462,23 +6462,42 @@ function renderTeamCard() {
 function updateTeamCard() {
   const el = document.getElementById('admin-team-card');
   if (!el) return;
-  let rdvTotal = 0, appelsTotal = 0, perdusTotal = 0, xpTotal = 0, actifs = 0;
-  Object.entries(adminCommerciauxData).forEach(([name, d]) => {
-    rdvTotal += d.rdv || computeRdvTotal(d.state) || 0;
-    appelsTotal += d.state ? ((d.state.leads_appeles||0)+(d.state.appel_naturel||0)) : 0;
-    perdusTotal += d.state ? (d.state.perdu||0) : 0;
-    xpTotal += d.xp || 0;
-    if (d.lastSeen && (Date.now() - new Date(d.lastSeen).getTime()) < 10 * 60 * 1000) actifs++;
+
+  // Agréger tous les states comme si c'était un seul commercial
+  const agg = {};
+  let xpTotal = 0, actifs = 0;
+  const ALL_KEYS = [
+    'leads_appeles','appel_naturel','jamais_repondu','perdu','autres_villes','leads_entrant',
+    'rdv_leads','rdv_aappeler','rdv_slacks','rdv_violet','rdv_gris','recommandation',
+    'rdv_stocks','rdv_2eme','appel_naturel_rdv','rdv_msg_fb','rdv_dm_fb',
+    'msg_fb_recu','dm_fb','docs_recup','annulation','dossier_resolve','comment_fb'
+  ];
+  ALL_KEYS.forEach(k => agg[k] = 0);
+  // Agréger bleus/marrons par ville
+  ALL_VILLES.forEach(v => {
+    ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0);
   });
+
+  Object.entries(adminCommerciauxData).forEach(([name, d]) => {
+    const s = d.state || {};
+    ALL_KEYS.forEach(k => agg[k] += s[k] || 0);
+    ALL_VILLES.forEach(v => {
+      ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0);
+    });
+    xpTotal += d.xp || 0;
+    if (d.lastSeen && (Date.now() - new Date(d.lastSeen).getTime()) < 10*60*1000) actifs++;
+  });
+
   const nbTotal = Object.keys(adminCommerciauxData).length;
   const periodLabel = adminPeriod === 'day' ? "Aujourd'hui" : (adminPeriod === 'week' ? 'Cette semaine' : 'Ce mois-ci');
-  el.innerHTML = `<div class="admin-team-card">
-    <div class="admin-team-header">🌐 Équipe — ${periodLabel} <span style="margin-left:auto;font-size:10px;color:var(--muted)">${actifs}/${nbTotal} en ligne</span></div>
-    <div class="admin-team-stats">
-      <div class="admin-team-stat"><div class="v">${rdvTotal}</div><div class="l">RDV total</div></div>
-      <div class="admin-team-stat"><div class="v">${appelsTotal}</div><div class="l">Appels</div></div>
-      <div class="admin-team-stat"><div class="v">${perdusTotal}</div><div class="l">Perdus</div></div>
-      <div class="admin-team-stat"><div class="v">${xpTotal}</div><div class="l">XP cumulé</div></div>
+
+  el.innerHTML = `<div class="admin-team-card" style="padding:0;overflow:hidden">
+    <div class="admin-team-header" style="padding:12px 16px">
+      🌐 Équipe EverGlass — ${periodLabel}
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${actifs}/${nbTotal} en ligne</span>
+    </div>
+    <div style="padding:12px 16px">
+      ${ficheHTML('Équipe', agg, xpTotal, '🌐')}
     </div>
   </div>`;
 }
@@ -6511,59 +6530,82 @@ function openAnalysisPanel(name) {
     }, () => renderPanelWithData(name, d));
 }
 
-function renderPanelWithData(name, d) {
-  const s = d.state || {};
-  const rdv = d.rdv || computeRdvTotal(s) || 0;
-  const perdus = s.perdu || 0;
+function ficheHTML(name, s, xpVal, avatar) {
+  // Génère le HTML de fiche complet depuis un state — utilisé pour individuel ET team
+  const rdv = computeRdvTotal(s);
   const appels = (s.leads_appeles || 0) + (s.appel_naturel || 0);
+  const perdus = s.perdu || 0;
+  const lv = (() => { let l = LEVELS[0]; for (const lvl of LEVELS) { if ((xpVal||0) >= lvl[0]) l = lvl; } return l; })();
+  const ratio = rdv > 0 && appels > 0 ? (appels / rdv).toFixed(1) : '—';
 
-  // Temp : injecter l'état pour faire tourner analyzeStrengthsWeaknesses
-  const savedState = state;
-  state = s;
-  const stats = aggregateBilan('day');
-  const { strengths, improvements } = analyzeStrengthsWeaknesses(stats, 'day');
-  state = savedState;
+  function row(icon, label, key, color) {
+    const v = s[key] || 0;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--muted)">${icon} ${label}</span>
+      <span style="font-family:'Rajdhani',sans-serif;font-weight:800;font-size:14px;color:${v > 0 ? color : 'var(--muted)'}">${v || '—'}</span>
+    </div>`;
+  }
 
-  const content = document.getElementById('admin-panel-content');
+  const byVille = getBleuMarronByVilleFromState(s);
+  const vKeys = Object.keys(byVille);
+  const bleuMarronHTML = vKeys.length ? `<div class="ac-card">
+    <div class="ac-card-title">🔵🟤 Bleus &amp; Marrons par ville</div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-top:6px">
+      ${vKeys.map(vid => {
+        const dd = byVille[vid];
+        return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;background:var(--surface2);border-radius:8px;padding:7px 10px">
+          <span style="font-weight:700;color:var(--accent)">📍 ${dd.label}</span>
+          <span>🔵 <b style="color:#60a5fa">${dd.bm}m/${dd.bs}s</b>&nbsp;&nbsp;🟤 <b style="color:#a78bfa">${dd.mm}m/${dd.ms}s</b></span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>` : '';
 
-  // Stats du jour
-  const lv = (() => { let l = LEVELS[0]; for (const lvl of LEVELS) { if ((d.xp||0) >= lvl[0]) l = lvl; } return l; })();
-
-  content.innerHTML = `
+  return `
     <div class="perf-zone">
-      <div class="perf-header"><span>${d.avatar||'🦁'}</span><span>${name} — Aujourd'hui</span></div>
+      <div class="perf-header"><span>${avatar||'🦁'}</span><span>${name} — Aujourd'hui</span></div>
       <div class="perf-grid">
         <div class="perf-card perf-green"><div class="perf-value">${rdv}</div><div class="perf-label">RDV</div></div>
         <div class="perf-card perf-cyan"><div class="perf-value">${appels}</div><div class="perf-label">Appels</div></div>
         <div class="perf-card perf-red"><div class="perf-value">${perdus}</div><div class="perf-label">Perdus</div></div>
-        <div class="perf-card perf-yellow"><div class="perf-value">${d.xp||0}</div><div class="perf-label">XP · ${lv[1]}</div></div>
+        <div class="perf-card perf-yellow"><div class="perf-value">${xpVal||0}</div><div class="perf-label">XP · ${lv[1]}</div></div>
       </div>
     </div>
-    ${(() => {
-      const byVille = getBleuMarronByVilleFromState(s);
-      const vKeys = Object.keys(byVille);
-      if (!vKeys.length) return '';
-      return `<div class="ac-card">
-        <div class="ac-card-title">🔵🟤 Bleus &amp; Marrons par ville</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
-          ${vKeys.map(vid => {
-            const dd = byVille[vid];
-            return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;background:var(--surface2);border-radius:8px;padding:8px 10px">
-              <span style="font-weight:700;color:var(--accent)">📍 ${dd.label}</span>
-              <span>🔵 <b style="color:#60a5fa">${dd.bm}m&nbsp;/&nbsp;${dd.bs}s</b>&nbsp;&nbsp;🟤 <b style="color:#a78bfa">${dd.mm}m&nbsp;/&nbsp;${dd.ms}s</b></span>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    })()}
     <div class="ac-card">
-      <div class="ac-card-title">✅ Points forts</div>
-      <ul class="ac-eval-list">${strengths.map(s => `<li>${s}</li>`).join('')}</ul>
+      <div class="ac-card-title">⚡ Ratio : ${ratio} appels/RDV</div>
+      ${row('📋','Nouveaux leads appelés','leads_appeles','#00d4ff')}
+      ${row('📞','Appel naturel','appel_naturel','#10b981')}
+      ${row('🟨','Jamais répondu','jamais_repondu','#f59e0b')}
+      ${row('❌','Perdus','perdu','#ef4444')}
+      ${row('📍','Autres villes','autres_villes','#4a6080')}
     </div>
     <div class="ac-card">
-      <div class="ac-card-title" style="color:var(--yellow)">📈 Points à travailler</div>
-      <ul class="ac-eval-list">${improvements.map(s => `<li>${s}</li>`).join('')}</ul>
-    </div>`;
+      <div class="ac-card-title">🎯 RDV par source</div>
+      ${row('📋','Nouveaux leads','rdv_leads','#00d4ff')}
+      ${row('🔄','À appeler','rdv_aappeler','#60a5fa')}
+      ${row('💬','Slack','rdv_slacks','#10b981')}
+      ${row('🟣','Violet','rdv_violet','#a78bfa')}
+      ${row('⬜','Gris','rdv_gris','#94a3b8')}
+      ${row('⭐','Recommandation','recommandation','#f59e0b')}
+      ${row('📦','Stock','rdv_stocks','#fb923c')}
+      ${row('🚗','2ème voiture','rdv_2eme','#e879f9')}
+      ${row('📞','Appel naturel RDV','appel_naturel_rdv','#10b981')}
+      ${row('💬','FB messages','rdv_msg_fb','#3b82f6')}
+      ${row('📤','FB DM','rdv_dm_fb','#3b82f6')}
+    </div>
+    <div class="ac-card">
+      <div class="ac-card-title">🛠 Gestion</div>
+      ${row('📄','Docs récup','docs_recup','#7c3aed')}
+      ${row('🚫','Annulations','annulation','#ef4444')}
+      ${row('✅','Dossiers résolus','dossier_resolve','#10b981')}
+      ${row('💬','Commentaires FB','comment_fb','#3b82f6')}
+    </div>
+    ${bleuMarronHTML}`;
+}
+
+function renderPanelWithData(name, d) {
+  const s = d.state || {};
+  document.getElementById('admin-panel-content').innerHTML = ficheHTML(name, s, d.xp, d.avatar);
 }
 
 function closeAnalysisPanel() {
