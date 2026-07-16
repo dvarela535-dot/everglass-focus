@@ -6377,6 +6377,8 @@ function subscribeToAllCommercials(names) {
         adminCommerciauxData[name].rdv = doc.exists ? (doc.data().rdv || 0) : 0;
         updateAdminCard(name);
         updateTeamCard();
+        // Si la vue team full view est active, resynchroniser l'état agrégé
+        if (fullViewTarget === '__team__') applyTeamState();
       }, err => console.warn('admin snapshot', name, err));
 
     // Écoute le profil (avatar + lastSeen)
@@ -6647,7 +6649,7 @@ function openTeamPanel() {
   // Fetch frais pour tous les commerciaux, puis live subscription
   names.forEach(name => {
     db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
-      .get()
+      .get({ source: 'server' })
       .then(doc => {
         if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
         adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
@@ -6687,6 +6689,7 @@ function applyTeamState() {
 }
 
 function openTeamFullView() {
+  fullViewTarget = '__team__'; // flag pour le hook dans subscribeToAllCommercials
   closeAnalysisPanel();
   document.getElementById('admin-page').classList.add('hide');
   document.getElementById('main-topbar').style.display = '';
@@ -6722,7 +6725,7 @@ function openTeamFullView() {
 
   names.forEach(name => {
     db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
-      .get()
+      .get({ source: 'server' })
       .then(doc => {
         if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
         adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
@@ -6732,7 +6735,7 @@ function openTeamFullView() {
       .finally(() => {
         remaining--;
         if (remaining <= 0) {
-          // Toutes les données sont fraîches → on applique
+          // Toutes les données sont fraîches (depuis serveur) → on applique
           applyTeamState();
           // Puis on s'abonne pour les mises à jour en live
           const unsubs = names.map(n =>
@@ -6909,6 +6912,7 @@ function closeFullView() {
   if (badge) badge.classList.remove('show');
   document.getElementById('main-topbar').style.display = 'none';
   document.getElementById('admin-page').classList.remove('hide');
+  fullViewTarget = null;
   initState(); xp = 0;
   rebuildAllGrids(); updateAll();
 }
