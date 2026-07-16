@@ -3589,6 +3589,15 @@ function rdvFixeAddVille(villeId) {
   if (vEl) vEl.textContent = state['ville_' + villeId];
   updateVillesTotal();
 
+  // Si RDV depuis appel naturel → auto-incrémenter aussi le compteur d'appels reçus
+  if (pendingRdvSource === 'appel_naturel') {
+    state.appel_naturel = (state.appel_naturel || 0) + 1;
+    const anEl = document.getElementById('callval-appel_naturel');
+    if (anEl) anEl.textContent = state.appel_naturel;
+    const anValEl = document.getElementById('val-appel_naturel');
+    if (anValEl) anValEl.textContent = state.appel_naturel;
+  }
+
   gainXP(src.xp);
   playChaChing();
 
@@ -6678,8 +6687,41 @@ function openTeamFullView() {
   document.getElementById('day-next-btn').disabled = true;
 
   if (fullViewUnsubscribe) { fullViewUnsubscribe(); fullViewUnsubscribe = null; }
-  // adminCommerciauxData déjà maintenu frais par subscribeToAllCommercials — appliquer directement
+
+  // Appliquer immédiatement avec les données disponibles
   applyTeamState();
+
+  // Safety net : si Firebase n'avait pas encore tout chargé, ré-agréger après 800ms
+  // (le hook subscribeToAllCommercials mettra aussi à jour dès qu'un snapshot arrive)
+  if (db) {
+    const todayIso = getTodayIso();
+    const names = Object.keys(adminCommerciauxData);
+    let loaded = 0;
+    if (names.length > 0) {
+      names.forEach(name => {
+        db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
+          .get({ source: 'server' })
+          .then(doc => {
+            if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
+            const newState = doc.exists ? (doc.data().state || null) : null;
+            const newXp = doc.exists ? (doc.data().xp || 0) : 0;
+            // Ne mettre à jour que si les données sont différentes (évite d'écraser des données plus récentes)
+            if (JSON.stringify(newState) !== JSON.stringify(adminCommerciauxData[name].state)) {
+              adminCommerciauxData[name].state = newState;
+              adminCommerciauxData[name].xp = newXp;
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            loaded++;
+            if (loaded >= names.length && fullViewTarget === '__team__') {
+              applyTeamState(); // ré-agréger avec données fraîches du serveur
+              updateTeamCard(); // mettre à jour la bannière aussi
+            }
+          });
+      });
+    }
+  }
 }
 
 function openAnalysisPanel(name) {
