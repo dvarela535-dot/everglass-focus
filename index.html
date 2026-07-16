@@ -1887,8 +1887,7 @@
     </div>
   </div>
   <div id="admin-content" class="admin-content">
-    <div id="admin-team-card"></div>
-    <div id="admin-cards-grid" class="admin-cards-grid"></div>
+    <div id="admin-cards-grid" class="admin-cards-grid"><div id="admin-team-card"></div></div>
   </div>
 </div>
 
@@ -6463,42 +6462,50 @@ function updateTeamCard() {
   const el = document.getElementById('admin-team-card');
   if (!el) return;
 
-  // Agréger tous les states comme si c'était un seul commercial
-  const agg = {};
-  let xpTotal = 0, actifs = 0;
   const ALL_KEYS = [
-    'leads_appeles','appel_naturel','jamais_repondu','perdu','autres_villes','leads_entrant',
+    'leads_appeles','appel_naturel','jamais_repondu','perdu','autres_villes',
     'rdv_leads','rdv_aappeler','rdv_slacks','rdv_violet','rdv_gris','recommandation',
     'rdv_stocks','rdv_2eme','appel_naturel_rdv','rdv_msg_fb','rdv_dm_fb',
     'msg_fb_recu','dm_fb','docs_recup','annulation','dossier_resolve','comment_fb'
   ];
+  const agg = {};
   ALL_KEYS.forEach(k => agg[k] = 0);
-  // Agréger bleus/marrons par ville
-  ALL_VILLES.forEach(v => {
-    ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0);
-  });
+  ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] = 0); });
 
+  let xpTotal = 0, actifs = 0;
   Object.entries(adminCommerciauxData).forEach(([name, d]) => {
     const s = d.state || {};
     ALL_KEYS.forEach(k => agg[k] += s[k] || 0);
-    ALL_VILLES.forEach(v => {
-      ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0);
-    });
+    ALL_VILLES.forEach(v => { ['bm','bs','mm','ms'].forEach(p => agg[p+'_'+v.id] += s[p+'_'+v.id] || 0); });
     xpTotal += d.xp || 0;
     if (d.lastSeen && (Date.now() - new Date(d.lastSeen).getTime()) < 10*60*1000) actifs++;
   });
 
   const nbTotal = Object.keys(adminCommerciauxData).length;
-  const periodLabel = adminPeriod === 'day' ? "Aujourd'hui" : (adminPeriod === 'week' ? 'Cette semaine' : 'Ce mois-ci');
+  const rdvTotal = computeRdvTotal(agg);
+  const appelsTotal = (agg.leads_appeles || 0) + (agg.appel_naturel || 0);
+  const perdusTotal = agg.perdu || 0;
 
-  el.innerHTML = `<div class="admin-team-card" style="padding:0;overflow:hidden">
-    <div class="admin-team-header" style="padding:12px 16px">
-      🌐 Équipe EverGlass — ${periodLabel}
-      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${actifs}/${nbTotal} en ligne</span>
+  el.innerHTML = `<div class="admin-card live" style="border-color:#c084fc;box-shadow:0 0 20px rgba(192,132,252,0.2);cursor:default">
+    <div class="admin-card-avatar">🌐</div>
+    <div class="admin-card-name" style="color:#c084fc">
+      Équipe
+      <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:6px">${actifs}/${nbTotal} en ligne</span>
     </div>
-    <div style="padding:12px 16px">
-      ${ficheHTML('Équipe', agg, xpTotal, '🌐')}
+    <div class="admin-card-stats">
+      <div class="admin-card-stat"><span>RDV total</span><b style="color:var(--green)">${rdvTotal}</b></div>
+      <div class="admin-card-stat"><span>↳ Leads</span><b style="color:#60a5fa">${agg.rdv_leads||0}</b></div>
+      <div class="admin-card-stat"><span>↳ À appeler</span><b style="color:#60a5fa">${agg.rdv_aappeler||0}</b></div>
+      <div class="admin-card-stat"><span>↳ Slack</span><b style="color:#34d399">${agg.rdv_slacks||0}</b></div>
+      <div class="admin-card-stat"><span>↳ Violet</span><b style="color:#a78bfa">${agg.rdv_violet||0}</b></div>
+      <div class="admin-card-stat"><span>↳ Gris</span><b style="color:#94a3b8">${agg.rdv_gris||0}</b></div>
+      <div class="admin-card-stat"><span>↳ Naturel</span><b style="color:#10b981">${agg.appel_naturel_rdv||0}</b></div>
+      <div class="admin-card-stat" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span>Appels</span><b>${appelsTotal}</b></div>
+      <div class="admin-card-stat"><span>Perdus</span><b style="color:var(--red)">${perdusTotal}</b></div>
+      <div class="admin-card-stat"><span>Docs récup</span><b style="color:#7c3aed">${agg.docs_recup||0}</b></div>
+      <div class="admin-card-stat"><span>XP cumulé</span><b style="color:var(--accent)">${xpTotal}</b></div>
     </div>
+    ${renderBleuMarronAdminRows(agg)}
   </div>`;
 }
 
