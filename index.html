@@ -3486,7 +3486,10 @@ function toggleRdvFixePopup() {
   const pop = document.getElementById('rdvfixe-popup');
   if (!pop) return;
   const isOpen = pop.classList.contains('open');
-  if (!isOpen) renderRdvRemoveZone();
+  if (!isOpen) {
+    updateRdvFixeDisplay(); // forcer le refresh du bouton avant d'ouvrir
+    renderRdvRemoveZone();
+  }
   pop.classList.toggle('open');
 }
 
@@ -5346,6 +5349,7 @@ function applyDayRender() {
   setRemarksFields(viewingIso ? entryForRemarks?.remarks : (getHistory().find(h => h.iso === todayIso)?.remarks));
   renderLeadsEntrantsGrid();
   rebuildAllGrids();
+  updateRdvFixeDisplay(); // s'assurer que le compteur RDV FIXÉ est à jour après rebuild
   updateAll();
   updateLevel();
   const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
