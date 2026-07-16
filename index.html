@@ -4724,7 +4724,6 @@ function renderACVilles() {
     return `<tr class="${cls}">
       <td>🏙 ${r.label}${badge}</td>
       <td>${r.nouveauxLeads}</td>
-      <td>${r.rdv_leads}</td>
       <td>${r.rdv_slacks}</td>
       <td>${r.rdv_stocks}</td>
       <td>${r.rdv_aappeler}</td>
@@ -4743,7 +4742,7 @@ function renderACVilles() {
       <div class="ac-card-title">📍 Répartition par ville</div>
       <div class="ac-ville-table-wrap">
         <table class="ac-ville-table">
-          <tr><th>Ville</th><th>Nouv. Leads</th><th>Leads</th><th>Slack</th><th>Stock</th><th>À appeler</th><th>Naturel</th><th>Msg FB</th><th>DM FB</th><th>2ème</th><th>Gris</th><th>Violet</th><th>RDV</th></tr>
+          <tr><th>Ville</th><th>Nouv. Leads</th><th>Slack</th><th>Stock</th><th>À appeler</th><th>Naturel</th><th>Msg FB</th><th>DM FB</th><th>2ème</th><th>Gris</th><th>Violet</th><th>RDV</th></tr>
           ${rowsHtml}
         </table>
       </div>
@@ -6638,9 +6637,20 @@ function openTeamPanel() {
   renderPanelWithData('Équipe', d);
 }
 
+function applyTeamState() {
+  // Recalcule l'état agrégé depuis les données Firebase courantes et l'injecte dans l'app
+  const { state: aggState, xp: xpTotal } = getTeamAggState();
+  state = JSON.parse(JSON.stringify(aggState));
+  xp = xpTotal;
+  rebuildAllGrids();
+  updateAll();
+  updateLevel();
+  const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
+  const nameEl = document.getElementById('display-name'); if (nameEl) nameEl.textContent = '🌐 Équipe EverGlass';
+}
+
 function openTeamFullView() {
   closeAnalysisPanel();
-  // Masque admin, affiche l'app en mode lecture team
   document.getElementById('admin-page').classList.add('hide');
   document.getElementById('main-topbar').style.display = '';
   let badge = document.getElementById('full-view-badge');
@@ -6657,15 +6667,27 @@ function openTeamFullView() {
   badge.textContent = '🌐 Vue Équipe (lecture seule) — retour admin';
   badge.classList.add('show');
   document.getElementById('day-next-btn').disabled = true;
-  // Injecter l'état agrégé dans l'app
-  const { state: aggState, xp: xpTotal } = getTeamAggState();
-  state = JSON.parse(JSON.stringify(aggState));
-  xp = xpTotal;
-  rebuildAllGrids();
-  updateAll();
-  updateLevel();
-  const xpEl = document.getElementById('xp-val'); if (xpEl) xpEl.textContent = xp;
-  const nameEl = document.getElementById('display-name'); if (nameEl) nameEl.textContent = '🌐 Équipe EverGlass';
+
+  // Appliquer l'état actuel immédiatement
+  applyTeamState();
+
+  // S'abonner aux mises à jour live de tous les commerciaux
+  // → chaque fois qu'un commercial met à jour ses données, la vue team se resynchronise
+  if (fullViewUnsubscribe) { fullViewUnsubscribe(); fullViewUnsubscribe = null; }
+  if (db) {
+    const todayIso = getTodayIso();
+    const names = Object.keys(adminCommerciauxData);
+    const unsubs = names.map(name =>
+      db.collection('commerciaux').doc(name).collection('jours').doc(todayIso)
+        .onSnapshot(doc => {
+          if (!adminCommerciauxData[name]) adminCommerciauxData[name] = {};
+          adminCommerciauxData[name].state = doc.exists ? (doc.data().state || null) : null;
+          adminCommerciauxData[name].xp    = doc.exists ? (doc.data().xp || 0) : 0;
+          applyTeamState(); // recalcule et réinjecte tout
+        }, () => {})
+    );
+    fullViewUnsubscribe = () => unsubs.forEach(fn => fn());
+  }
 }
 
 function openAnalysisPanel(name) {
