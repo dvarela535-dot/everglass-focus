@@ -3589,15 +3589,6 @@ function rdvFixeAddVille(villeId) {
   if (vEl) vEl.textContent = state['ville_' + villeId];
   updateVillesTotal();
 
-  // Si RDV depuis appel naturel → auto-incrémenter aussi le compteur d'appels reçus
-  if (pendingRdvSource === 'appel_naturel') {
-    state.appel_naturel = (state.appel_naturel || 0) + 1;
-    const anEl = document.getElementById('callval-appel_naturel');
-    if (anEl) anEl.textContent = state.appel_naturel;
-    const anValEl = document.getElementById('val-appel_naturel');
-    if (anValEl) anValEl.textContent = state.appel_naturel;
-  }
-
   gainXP(src.xp);
   playChaChing();
 
@@ -5443,7 +5434,7 @@ function getWeekNumber(d) {
 function cancelPerduPopup() {
   const pop = document.getElementById('perdu-popup');
   if (pop) pop.classList.remove('open');
-  pendingPerduNote = '';
+  // NE PAS reset pendingPerduNote ici — il est utilisé dans perduAddVille() après
 }
 
 // ══════════════════ RAPPORT / SUPPORT BRIEF ══════════════════
