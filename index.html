@@ -5724,9 +5724,14 @@ function getClotureChecks() {
   const todayIso = getTodayIso();
   // 1. Leads entrants
   const leadsOk = (state.leads_entrant || 0) > 0;
-  // 2. Bleus/Marrons : au moins une ville avec bm ou mm > 0
-  const hasBleuMarron = ALL_VILLES.some(v =>
-    (state['bm_'+v.id]||0) > 0 || (state['mm_'+v.id]||0) > 0
+  // 2. Bleus/Marrons : toutes les villes actives doivent avoir matin+soir remplis
+  const _vActives2 = ALL_VILLES.filter(v =>
+    (state['ville_'+v.id]||0)>0 ||
+    (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0)>0
+  );
+  const hasBleuMarron = _vActives2.length > 0 && _vActives2.every(v =>
+    ((state['bm_'+v.id]||0)>0 && (state['bs_'+v.id]||0)>0) ||
+    ((state['mm_'+v.id]||0)>0 && (state['ms_'+v.id]||0)>0)
   );
   // 3. Appels naturels : si > 0, tous doivent avoir direct/rappelé dans le log
   const natTotal = state.appel_naturel || 0;
@@ -5773,8 +5778,13 @@ function renderClotureChecklist() {
   </div>`;
 
   // ── 2. Bleus & Marrons (matin + soir par ville) ──
-  // Vert seulement si matin ET soir sont remplis (bleus ou marrons) pour au moins une ville
-  const hasBleuMarron = ALL_VILLES.some(v =>
+  // Villes actives = celles où le commercial a travaillé (RDV, leads, bleus/marrons)
+  const _villesActives = ALL_VILLES.filter(v =>
+    (state['ville_'+v.id]||0)>0 ||
+    (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0)>0
+  );
+  // Vert seulement si TOUTES les villes actives ont matin ET soir remplis
+  const hasBleuMarron = _villesActives.length > 0 && _villesActives.every(v =>
     ((state['bm_'+v.id]||0)>0 && (state['bs_'+v.id]||0)>0) ||
     ((state['mm_'+v.id]||0)>0 && (state['ms_'+v.id]||0)>0)
   );
@@ -5782,7 +5792,7 @@ function renderClotureChecklist() {
     (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0) > 0
     || (state['ville_'+v.id]||0) > 0
   );
-  const villesShow = villesActives.length > 0 ? villesActives : ALL_VILLES.slice(0,3);
+  const villesShow = _villesActives.length > 0 ? _villesActives : ALL_VILLES.slice(0,3);
   html += `<div style="padding:12px 14px;background:${hasBleuMarron?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${hasBleuMarron?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:18px">${hasBleuMarron?'✅':'❌'}</span>
@@ -5809,11 +5819,15 @@ function renderClotureChecklist() {
   const natLog = (state.generic_ville_log||[]).filter(e=>e.key==='appel_naturel');
   const natOk = natTotal===0 || natLog.length===natTotal;
   html += `<div style="padding:12px 14px;background:${natOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${natOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">${natOk?'✅':'❌'}</span>
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${natOk?'#10b981':'#f87171'}">Appels naturels</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">${natOk?'✅':'❌'}</span>
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${natOk?'#10b981':'#f87171'}">Appels naturels</div>
+      </div>
+      <button onclick="closeCloturePopup();openNaturelResponsePopup(3)" style="background:rgba(16,185,129,.2);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:5px 10px;color:#10b981;font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;cursor:pointer">+ Ajouter</button>
     </div>
-    <div style="font-size:11px;color:#4a6080;margin-top:4px">${natTotal===0?'Aucun appel naturel (ok)':natOk?natTotal+' appel(s) complets':(natTotal-natLog.length)+' appel(s) sans détail — supprime et re-saisis via l\'onglet Appels'}</div>
+    <div style="font-size:11px;color:#4a6080">${natTotal===0?'Aucun appel naturel — ajoute si tu en as eu':natOk?natTotal+' appel(s) bien tracé(s)':(natTotal-natLog.length)+' appel(s) sans détail — supprime et re-saisis'}</div>
+    ${natLog.length>0?'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">'+natLog.map((e,i)=>{const vl=ALL_VILLES.find(x=>x.id===e.ville);return '<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.3);color:#94a3b8">'+(vl?vl.label:e.ville)+' '+(e.reponse==='direct'?'⚡':'🔁')+'</span>'}).join('')+'</div>':''}
   </div>`;
 
   // ── 4. Remarques ──
