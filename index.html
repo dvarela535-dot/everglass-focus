@@ -5773,7 +5773,11 @@ function renderClotureChecklist() {
   </div>`;
 
   // ── 2. Bleus & Marrons (matin + soir par ville) ──
-  const hasBleuMarron = ALL_VILLES.some(v => (state['bm_'+v.id]||0)>0||(state['mm_'+v.id]||0)>0);
+  // Vert seulement si matin ET soir sont remplis (bleus ou marrons) pour au moins une ville
+  const hasBleuMarron = ALL_VILLES.some(v =>
+    ((state['bm_'+v.id]||0)>0 && (state['bs_'+v.id]||0)>0) ||
+    ((state['mm_'+v.id]||0)>0 && (state['ms_'+v.id]||0)>0)
+  );
   const villesActives = ALL_VILLES.filter(v =>
     (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0) > 0
     || (state['ville_'+v.id]||0) > 0
