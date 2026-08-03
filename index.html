@@ -3228,9 +3228,14 @@ function renderAppelsNaturelsStats() {
   if (!el) return;
 
   const total   = state.appel_naturel || 0;
-  const direct  = state.appel_naturel_direct || 0;
-  const rappel  = state.appel_naturel_rappeler || 0;
   const rdv     = state.appel_naturel_rdv || 0;
+  // Calculer direct/rappelé depuis le log (source fiable) plutôt que les compteurs
+  const allNaturelLog = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  const direct  = allNaturelLog.filter(e => e.reponse === 'direct').length;
+  const rappel  = allNaturelLog.filter(e => e.reponse === 'rappeler').length;
+  // Resynchroniser les compteurs si désynchros
+  state.appel_naturel_direct    = direct;
+  state.appel_naturel_rappeler  = rappel;
   const tauxRdv = total > 0 ? Math.round(rdv / total * 100) : 0;
 
   if (total === 0) {
