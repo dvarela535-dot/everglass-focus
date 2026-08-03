@@ -3167,6 +3167,21 @@ function renderAnnulationsList() {
   `).join('') + `</div>`;
 }
 
+function editPerduType(oldType, villes) {
+  // Ouvre un prompt pour modifier le motif de tous les perdus de ce type aujourd'hui
+  const newMotif = window.prompt('Modifier le motif "' + oldType + '" :', oldType);
+  if (!newMotif || newMotif === oldType) return;
+  if (state.perdu_log) {
+    state.perdu_log = state.perdu_log.map(e => {
+      if ((e.note || 'Non précisé') === oldType) return { ...e, note: newMotif };
+      return e;
+    });
+  }
+  saveStorage();
+  renderPerdusList();
+  showToast('Motif mis à jour');
+}
+
 function renderPerdusList() {
   const el = document.getElementById('perdus-list');
   if (!el) return;
@@ -3200,7 +3215,10 @@ function renderPerdusList() {
       return `<div class="perdu-entry" style="flex-direction:column;align-items:flex-start;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
           <span class="perdu-city" style="font-size:12px">${type}</span>
-          <span style="font-size:11px;font-weight:700;color:var(--red);background:rgba(239,68,68,0.1);padding:2px 7px;border-radius:6px">${entries.length}x</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${isToday && type !== 'Non précisé' ? '' : isToday ? `<span onclick="editPerduType('${type.replace(/'/g,"\\'")}','${entries.map(e=>e.ville).join(',')}')" style="cursor:pointer;font-size:11px;color:var(--accent)" title="Modifier le motif">✏️</span>` : ''}
+            <span style="font-size:11px;font-weight:700;color:var(--red);background:rgba(239,68,68,0.1);padding:2px 7px;border-radius:6px">${entries.length}x</span>
+          </div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">
           ${entries.map((e, i) => {
