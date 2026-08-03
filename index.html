@@ -5742,13 +5742,20 @@ function getClotureChecks() {
   const remarks = todayEntry?.remarks || JSON.parse(localStorage.getItem(lsKey('eg_remarks')) || '{}');
   const remarquesOk = Object.values(remarks).some(v => v && v.toString().trim().length > 0);
 
+  const leadsOk2    = (state.leads_entrant||0) > 0 || _clotConfirmed.leads;
+  const bmOk2        = hasBleuMarron || _clotConfirmed.bleumarron;
+  const naturelOk2   = natTotal > 0 || _clotConfirmed.naturel;
+
   return [
-    { label: 'Leads entrants du jour', ok: leadsOk,      detail: leadsOk ? (state.leads_entrant||0)+' lead(s) saisi(s)' : 'Aucun lead entrant — pense à les saisir', tab: 'conv' },
-    { label: 'Bleus & Marrons',        ok: hasBleuMarron, detail: hasBleuMarron ? 'Toutes les villes remplies' : 'Certaines villes n\'ont pas matin+soir remplis', tab: 'gest' },
-    { label: 'Appels naturels complets', ok: natOk,       detail: natOk ? (natTotal === 0 ? 'Aucun appel naturel (OK)' : natTotal+' appel(s) bien tracé(s)') : (natTotal-natLog.length)+' appel(s) sans détail', tab: 'appels' },
-    { label: 'Remarques (facultatif)',  ok: true,          detail: remarquesOk ? 'Remarques enregistrées ✓' : 'Non rempli — pas obligatoire', tab: 'remarques' },
+    { label: 'Leads entrants du jour', ok: leadsOk2,  detail: (state.leads_entrant||0)>0 ? (state.leads_entrant)+' lead(s) ✓' : _clotConfirmed.leads ? 'Confirmé à 0 ✓' : 'Aucun — confirme que c\'est bien 0', tab: 'conv',    key: 'leads' },
+    { label: 'Bleus & Marrons',        ok: bmOk2,     detail: hasBleuMarron ? 'Remplis ✓' : _clotConfirmed.bleumarron ? 'Confirmé à 0 ✓' : 'Aucun — confirme si journée sans', tab: 'gest',     key: 'bleumarron' },
+    { label: 'Appels naturels',         ok: naturelOk2, detail: natTotal>0 ? natTotal+' appel(s) ✓' : _clotConfirmed.naturel ? 'Confirmé à 0 ✓' : 'Aucun — confirme si journée sans', tab: 'appels',  key: 'naturel' },
+    { label: 'Remarques',               ok: true,      detail: remarquesOk ? 'Saisies ✓' : 'Non remplies — facultatif', tab: 'remarques', key: null },
   ];
 }
+
+// Confirmations explicites des 0 dans le popup clôture
+let _clotConfirmed = { leads: false, bleumarron: false, naturel: false };
 
 function renderClotureChecklist() {
   const checks = getClotureChecks();
@@ -5763,14 +5770,17 @@ function renderClotureChecklist() {
   let html = '';
 
   // ── 1. Leads entrants ──
-  const leadsOk = (state.leads_entrant || 0) > 0;
+  const leadsOk = (state.leads_entrant||0)>0 || _clotConfirmed.leads;
   html += `<div style="padding:12px 14px;background:${leadsOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${leadsOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
-    <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">${leadsOk?'✅':'❌'}</span>
         <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${leadsOk?'#10b981':'#f87171'}">Leads entrants du jour</div>
       </div>
-      <button onclick="toggleAirtableHelp()" style="background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);border-radius:20px;padding:3px 10px;color:#00d4ff;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">? Comment savoir</button>
+      <div style="display:flex;gap:6px">
+        ${(state.leads_entrant||0)===0&&!_clotConfirmed.leads?'<button onclick="_clotConfirmed.leads=true;renderClotureChecklist()" style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:4px 10px;color:#f59e0b;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">✓ Confirmer 0</button>':''}
+        <button onclick="toggleAirtableHelp()" style="background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);border-radius:8px;padding:4px 10px;color:#00d4ff;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">? Airtable</button>
+      </div>
     </div>
     <div id="airtable-help" style="display:none;margin-top:8px;padding:10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:11px;color:#94a3b8;line-height:1.7">
       📋 <b style="color:#00d4ff">Dans Airtable → Vue tableur</b><br>
@@ -5794,19 +5804,22 @@ function renderClotureChecklist() {
     (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0)>0
   );
   // Vert seulement si TOUTES les villes actives ont matin ET soir remplis
-  const hasBleuMarron = _villesActives.length > 0 && _villesActives.every(v =>
+  const hasBleuMarron = (_villesActives.length > 0 && _villesActives.every(v =>
     ((state['bm_'+v.id]||0)>0 && (state['bs_'+v.id]||0)>0) ||
     ((state['mm_'+v.id]||0)>0 && (state['ms_'+v.id]||0)>0)
-  );
-  const villesActives = ALL_VILLES.filter(v =>
+  )) || _clotConfirmed.bleumarron;
+  const villesActives2 = ALL_VILLES.filter(v =>
     (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0) > 0
     || (state['ville_'+v.id]||0) > 0
   );
   const villesShow = _villesActives.length > 0 ? _villesActives : ALL_VILLES.slice(0,3);
   html += `<div style="padding:12px 14px;background:${hasBleuMarron?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${hasBleuMarron?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <span style="font-size:18px">${hasBleuMarron?'✅':'❌'}</span>
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${hasBleuMarron?'#10b981':'#f87171'}">Bleus & Marrons</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">${hasBleuMarron?'✅':'❌'}</span>
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${hasBleuMarron?'#10b981':'#f87171'}">Bleus & Marrons</div>
+      </div>
+      ${!hasBleuMarron&&!_clotConfirmed.bleumarron?'<button onclick="_clotConfirmed.bleumarron=true;renderClotureChecklist()" style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:4px 10px;color:#f59e0b;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">✓ Journée sans</button>':''}
     </div>
     ${villesShow.map(v => `
       <div style="margin-bottom:10px;padding:8px 10px;background:rgba(0,0,0,.2);border-radius:8px">
@@ -5827,17 +5840,24 @@ function renderClotureChecklist() {
   // ── 3. Appels naturels ──
   const natTotal = state.appel_naturel||0;
   const natLog = (state.generic_ville_log||[]).filter(e=>e.key==='appel_naturel');
-  const natOk = natTotal===0 || natLog.length===natTotal;
+  const natOk = natTotal>0 || _clotConfirmed.naturel;
   html += `<div style="padding:12px 14px;background:${natOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${natOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">${natOk?'✅':'❌'}</span>
         <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${natOk?'#10b981':'#f87171'}">Appels naturels</div>
       </div>
-      <button onclick="closeCloturePopup();openNaturelResponsePopup(3)" style="background:rgba(16,185,129,.2);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:5px 10px;color:#10b981;font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;cursor:pointer">+ Ajouter</button>
+      <div style="display:flex;gap:6px">
+        ${natTotal===0&&!_clotConfirmed.naturel?'<button onclick="_clotConfirmed.naturel=true;renderClotureChecklist()" style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:4px 10px;color:#f59e0b;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">✓ Journée sans</button>':''}
+        <button onclick="closeCloturePopup();openNaturelResponsePopup(3)" style="background:rgba(16,185,129,.2);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:4px 10px;color:#10b981;font-family:Rajdhani,sans-serif;font-weight:700;font-size:11px;cursor:pointer">+ Ajouter</button>
+      </div>
     </div>
-    <div style="font-size:11px;color:#4a6080">${natTotal===0?'Aucun appel naturel — ajoute si tu en as eu':natOk?natTotal+' appel(s) bien tracé(s)':(natTotal-natLog.length)+' appel(s) sans détail — supprime et re-saisis'}</div>
-    ${natLog.length>0?'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">'+natLog.map((e,i)=>{const vl=ALL_VILLES.find(x=>x.id===e.ville);return '<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.3);color:#94a3b8">'+(vl?vl.label:e.ville)+' '+(e.reponse==='direct'?'⚡':'🔁')+'</span>'}).join('')+'</div>':''}
+    <div style="font-size:11px;color:#4a6080;margin-bottom:6px">${natTotal===0?'Aucun appel naturel — ajoute si tu en as eu':natOk?natTotal+' appel(s) bien tracé(s)':'<b style=\"color:#f87171\">'+(natTotal-natLog.length)+' appel(s) sans détail</b> (ajoutés sans passer par le popup)'}</div>
+    ${!natOk && natTotal>natLog.length?`<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <button onclick="closeCloturePopup();openNaturelResponsePopup(3)" style="flex:1;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:6px 10px;color:#10b981;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">+ Re-saisir les ${natTotal-natLog.length}</button>
+      <button onclick="ignorerNaturelsSansDetail()" style="flex:1;background:rgba(100,100,100,.15);border:1px solid rgba(100,100,100,.3);border-radius:8px;padding:6px 10px;color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">Ignorer les ${natTotal-natLog.length} non tracés</button>
+    </div>`:''}
+    ${natLog.length>0?'<div style="display:flex;flex-wrap:wrap;gap:4px">'+natLog.map((e,i)=>{const vl=ALL_VILLES.find(x=>x.id===e.ville);return '<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.3);color:#94a3b8">'+(vl?vl.label:e.ville)+' '+(e.reponse==='direct'?'⚡':'🔁')+'</span>'}).join('')+'</div>':''}
   </div>`;
 
   // ── 4. Remarques ──
@@ -5868,6 +5888,18 @@ function renderClotureChecklist() {
     confirmBtn.style.cursor = allOk2?'pointer':'not-allowed';
     confirmBtn.textContent = allOk2?'✅ CONFIRMER LA CLÔTURE':'⚠ Complète les points manquants';
   }
+}
+
+function ignorerNaturelsSansDetail() {
+  const natLog = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  state.appel_naturel = natLog.length;
+  const el = document.getElementById('val-appel_naturel');
+  if (el) el.textContent = state.appel_naturel;
+  const elC = document.getElementById('callval-appel_naturel');
+  if (elC) elC.textContent = state.appel_naturel;
+  saveStorage();
+  renderClotureChecklist();
+  showToast('Compteur aligné sur les appels tracés');
 }
 
 function toggleAirtableHelp() {
@@ -5903,6 +5935,18 @@ function openCloturePopup() {
   if (viewingIso && viewingIso !== getTodayIso()) {
     showToast('Clôture uniquement disponible pour aujourd\'hui');
     return;
+  }
+  // Reset confirmations à chaque ouverture
+  _clotConfirmed = { leads: false, bleumarron: false, naturel: false };
+  // Auto-sync appel_naturel : les anciens appels sans log ne doivent pas bloquer
+  const natLog = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  if ((state.appel_naturel || 0) > natLog.length) {
+    state.appel_naturel = natLog.length;
+    const el = document.getElementById('val-appel_naturel');
+    if (el) el.textContent = state.appel_naturel;
+    const elC = document.getElementById('callval-appel_naturel');
+    if (elC) elC.textContent = state.appel_naturel;
+    saveStorage();
   }
   const pop = document.getElementById('cloture-popup');
   if (pop) { pop.style.display = 'flex'; }
