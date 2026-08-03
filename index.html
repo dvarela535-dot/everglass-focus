@@ -5745,35 +5745,135 @@ function getClotureChecks() {
   ];
 }
 
+function renderClotureChecklist() {
+  const checks = getClotureChecks();
+  const list = document.getElementById('cloture-checklist');
+  if (!list) return;
+  const allOk = checks.every(c => c.ok);
+
+  // Styles réutilisables
+  const inputStyle = 'width:100%;padding:8px 10px;background:#141f2e;border:1px solid #1e2d42;border-radius:8px;color:#e2e8f0;font-family:Rajdhani,sans-serif;font-size:14px;font-weight:700;box-sizing:border-box;margin-top:8px';
+  const labelSmall = 'font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#4a6080;margin-bottom:4px';
+
+  let html = '';
+
+  // ── 1. Leads entrants ──
+  const leadsOk = (state.leads_entrant || 0) > 0;
+  html += `<div style="padding:12px 14px;background:${leadsOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${leadsOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">${leadsOk?'✅':'❌'}</span>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${leadsOk?'#10b981':'#f87171'}">Leads entrants du jour</div>
+    </div>
+    <div style="margin-top:8px">
+      <div style="${labelSmall}">Nombre de leads entrants</div>
+      <input type="number" min="0" value="${state.leads_entrant||0}"
+        style="${inputStyle}" oninput="clotureSetLeads(+this.value)"
+        placeholder="Ex: 12">
+    </div>
+  </div>`;
+
+  // ── 2. Bleus & Marrons (matin + soir par ville) ──
+  const hasBleuMarron = ALL_VILLES.some(v => (state['bm_'+v.id]||0)>0||(state['mm_'+v.id]||0)>0);
+  const villesActives = ALL_VILLES.filter(v =>
+    (state['bm_'+v.id]||0)+(state['bs_'+v.id]||0)+(state['mm_'+v.id]||0)+(state['ms_'+v.id]||0) > 0
+    || (state['ville_'+v.id]||0) > 0
+  );
+  const villesShow = villesActives.length > 0 ? villesActives : ALL_VILLES.slice(0,3);
+  html += `<div style="padding:12px 14px;background:${hasBleuMarron?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${hasBleuMarron?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:18px">${hasBleuMarron?'✅':'❌'}</span>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${hasBleuMarron?'#10b981':'#f87171'}">Bleus & Marrons</div>
+    </div>
+    ${villesShow.map(v => `
+      <div style="margin-bottom:10px;padding:8px 10px;background:rgba(0,0,0,.2);border-radius:8px">
+        <div style="${labelSmall}">📍 ${v.label}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-top:6px">
+          <div><div style="font-size:9px;color:#3b82f6;font-weight:700;margin-bottom:2px">🔵 Matin</div>
+            <input type="number" min="0" value="${state['bm_'+v.id]||0}" style="${inputStyle.replace('margin-top:8px','')}" oninput="clotureSetBM('bm','${v.id}',+this.value)" onchange="renderClotureChecklist()"></div>
+          <div><div style="font-size:9px;color:#60a5fa;font-weight:700;margin-bottom:2px">🔵 Soir</div>
+            <input type="number" min="0" value="${state['bs_'+v.id]||0}" style="${inputStyle.replace('margin-top:8px','')}" oninput="clotureSetBM('bs','${v.id}',+this.value)"></div>
+          <div><div style="font-size:9px;color:#b45309;font-weight:700;margin-bottom:2px">🟤 Matin</div>
+            <input type="number" min="0" value="${state['mm_'+v.id]||0}" style="${inputStyle.replace('margin-top:8px','')}" oninput="clotureSetBM('mm','${v.id}',+this.value)" onchange="renderClotureChecklist()"></div>
+          <div><div style="font-size:9px;color:#d97706;font-weight:700;margin-bottom:2px">🟤 Soir</div>
+            <input type="number" min="0" value="${state['ms_'+v.id]||0}" style="${inputStyle.replace('margin-top:8px','')}" oninput="clotureSetBM('ms','${v.id}',+this.value)"></div>
+        </div>
+      </div>`).join('')}
+  </div>`;
+
+  // ── 3. Appels naturels ──
+  const natTotal = state.appel_naturel||0;
+  const natLog = (state.generic_ville_log||[]).filter(e=>e.key==='appel_naturel');
+  const natOk = natTotal===0 || natLog.length===natTotal;
+  html += `<div style="padding:12px 14px;background:${natOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${natOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">${natOk?'✅':'❌'}</span>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${natOk?'#10b981':'#f87171'}">Appels naturels</div>
+    </div>
+    <div style="font-size:11px;color:#4a6080;margin-top:4px">${natTotal===0?'Aucun appel naturel (ok)':natOk?natTotal+' appel(s) complets':(natTotal-natLog.length)+' appel(s) sans détail — supprime et re-saisis via l\'onglet Appels'}</div>
+  </div>`;
+
+  // ── 4. Remarques ──
+  const todayEntry = getHistory().find(h=>h.iso===getTodayIso());
+  const remarks = todayEntry?.remarks || JSON.parse(localStorage.getItem(lsKey('eg_remarks'))||'{}');
+  const remarquesOk = Object.values(remarks).some(v=>v&&v.toString().trim().length>0);
+  const remarqueVal = remarks.positif||remarks.negatif||remarks.amelioration||'';
+  html += `<div style="padding:12px 14px;background:${remarquesOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${remarquesOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">${remarquesOk?'✅':'❌'}</span>
+      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${remarquesOk?'#10b981':'#f87171'}">Remarques</div>
+    </div>
+    <div style="margin-top:8px">
+      <div style="${labelSmall}">Points positifs / négatifs / à améliorer</div>
+      <textarea style="${inputStyle};resize:vertical;height:70px" placeholder="Note quelque chose..."
+        oninput="clotureSetRemarque(this.value)">${remarqueVal}</textarea>
+    </div>
+  </div>`;
+
+  list.innerHTML = html;
+
+  // Bouton confirmer
+  const allOk2 = getClotureChecks().every(c=>c.ok);
+  const confirmBtn = document.getElementById('cloture-confirm-btn');
+  if (confirmBtn) {
+    confirmBtn.disabled = !allOk2;
+    confirmBtn.style.opacity = allOk2?'1':'0.5';
+    confirmBtn.style.cursor = allOk2?'pointer':'not-allowed';
+    confirmBtn.textContent = allOk2?'✅ CONFIRMER LA CLÔTURE':'⚠ Complète les points manquants';
+  }
+}
+
+function clotureSetLeads(val) {
+  state.leads_entrant = Math.max(0, val||0);
+  const el = document.getElementById('val-leads_entrant');
+  if (el) el.textContent = state.leads_entrant;
+  saveStorage();
+  renderClotureChecklist();
+}
+
+function clotureSetBM(prefix, villeId, val) {
+  state[prefix+'_'+villeId] = Math.max(0, val||0);
+  saveStorage();
+}
+
+function clotureSetRemarque(val) {
+  let remarks = {};
+  try { remarks = JSON.parse(localStorage.getItem(lsKey('eg_remarks'))||'{}'); } catch(e) {}
+  remarks.positif = val;
+  localStorage.setItem(lsKey('eg_remarks'), JSON.stringify(remarks));
+  // Re-check le bouton
+  const allOk = getClotureChecks().every(c=>c.ok);
+  const btn = document.getElementById('cloture-confirm-btn');
+  if (btn) { btn.disabled=!allOk; btn.style.opacity=allOk?'1':'0.5'; btn.textContent=allOk?'✅ CONFIRMER LA CLÔTURE':'⚠ Complète les points manquants'; }
+}
+
 function openCloturePopup() {
   if (viewingIso && viewingIso !== getTodayIso()) {
     showToast('Clôture uniquement disponible pour aujourd\'hui');
     return;
   }
-  const checks = getClotureChecks();
-  const list = document.getElementById('cloture-checklist');
-  const allOk = checks.every(c => c.ok);
-
-  list.innerHTML = checks.map(c => `
-    <div onclick="closeCloturePopup();switchTab('${c.tab}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:${c.ok?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${c.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px;cursor:pointer">
-      <span style="font-size:20px">${c.ok?'✅':'❌'}</span>
-      <div style="flex:1">
-        <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:${c.ok?'#10b981':'#f87171'}">${c.label}</div>
-        <div style="font-size:11px;color:#4a6080;margin-top:2px">${c.detail}</div>
-      </div>
-      ${!c.ok?'<span style="font-size:11px;color:#4a6080">→</span>':''}
-    </div>`).join('');
-
-  const confirmBtn = document.getElementById('cloture-confirm-btn');
-  if (confirmBtn) {
-    confirmBtn.disabled = !allOk;
-    confirmBtn.style.opacity = allOk ? '1' : '0.4';
-    confirmBtn.style.cursor = allOk ? 'pointer' : 'not-allowed';
-    confirmBtn.textContent = allOk ? '✅ CONFIRMER LA CLÔTURE' : '⚠ Complète les points manquants';
-  }
-
   const pop = document.getElementById('cloture-popup');
   if (pop) { pop.style.display = 'flex'; }
+  renderClotureChecklist();
 }
 
 function closeCloturePopup() {
