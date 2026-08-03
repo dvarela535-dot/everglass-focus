@@ -3244,7 +3244,7 @@ function renderAppelsNaturelsStats() {
   const kpiHtml = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">' +
     '<div style="' + cardStyle + '"><div style="' + valStyle('var(--green)') + '">' + total + '</div><div style="' + labelStyle + '">Total reçus</div></div>' +
     '<div style="' + cardStyle + '"><div style="' + valStyle('var(--accent)') + '">' + direct + '</div><div style="' + labelStyle + '">Répondu direct</div></div>' +
-    '<div style="' + cardStyle + '"><div style="' + valStyle('#f59e0b') + '">' + rappel + '</div><div style="' + labelStyle + '">Veut rappeler</div></div>' +
+    '<div style="' + cardStyle + '"><div style="' + valStyle('#f59e0b') + '">' + rappel + '</div><div style="' + labelStyle + '">Rappelé</div></div>' +
     '<div style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(0,212,255,.05));border:1px solid var(--green);border-radius:12px;padding:14px;text-align:center">' +
     '<div style="' + valStyle('var(--green)') + '">' + rdv + '</div><div style="' + labelStyle + '">RDV pris</div>' +
     '<div style="font-size:10px;color:var(--accent);font-weight:700;margin-top:2px">' + tauxRdv + '% conversion</div></div>' +
@@ -3286,7 +3286,65 @@ function renderAppelsNaturelsStats() {
       '</div>';
   }
 
-  el.innerHTML = kpiHtml + barHtml + villeHtml;
+  // Liste des entrées individuelles avec suppression
+  let listeHtml = '';
+  if (log.length > 0) {
+    listeHtml = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px">' +
+      '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Entrées du jour</div>' +
+      log.map((e, i) => {
+        const v = ALL_VILLES.find(x => x.id === e.ville);
+        const label = v ? v.label : (e.ville || 'Autre');
+        const isDirect = e.reponse === 'direct';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;font-size:12px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="color:var(--green);font-size:14px">📞</span>' +
+          '<span style="font-weight:700;color:var(--text)">📍 ' + label + '</span>' +
+          '<span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;background:' + (isDirect ? 'rgba(0,212,255,.15)' : 'rgba(245,158,11,.15)') + ';color:' + (isDirect ? 'var(--accent)' : '#f59e0b') + '">' + (isDirect ? '⚡ Direct' : '🔁 Rappeler') + '</span>' +
+          '<span style="color:var(--muted);font-size:10px">' + (e.date || '') + '</span>' +
+          '</div>' +
+          '<button onclick="deleteNaturelEntry(' + i + ')" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#f87171;padding:3px 8px;font-size:11px;cursor:pointer;font-family:Rajdhani,sans-serif;font-weight:700">✕ Suppr.</button>' +
+          '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  el.innerHTML = kpiHtml + barHtml + villeHtml + listeHtml;
+}
+
+function deleteNaturelEntry(idx) {
+  const log = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  const entry = log[idx];
+  if (!entry) return;
+
+  // Trouver l'index réel dans generic_ville_log
+  let found = 0;
+  const realIdx = state.generic_ville_log.findIndex((e, i) => {
+    if (e.key === 'appel_naturel') {
+      if (found === idx) return true;
+      found++;
+    }
+    return false;
+  });
+  if (realIdx === -1) return;
+
+  // Décrémenter les compteurs
+  state.appel_naturel = Math.max(0, (state.appel_naturel || 0) - 1);
+  if (entry.reponse === 'direct') state.appel_naturel_direct = Math.max(0, (state.appel_naturel_direct || 0) - 1);
+  else state.appel_naturel_rappeler = Math.max(0, (state.appel_naturel_rappeler || 0) - 1);
+
+  // Retirer du log
+  state.generic_ville_log.splice(realIdx, 1);
+
+  // Mettre à jour tous les affichages immédiatement
+  const elVal = document.getElementById('val-appel_naturel');
+  if (elVal) elVal.textContent = state.appel_naturel;
+  const elCall = document.getElementById('callval-appel_naturel');
+  if (elCall) elCall.textContent = state.appel_naturel;
+
+  rebuildAllGrids(); // rafraîchir le call grid immédiatement
+  updateAll();
+  saveStorage();
+  showToast('Appel naturel supprimé');
 }
 
 function editPerduType(oldType, villes) {
