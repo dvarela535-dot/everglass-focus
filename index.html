@@ -3395,7 +3395,9 @@ function deleteNaturelEntry(idx) {
     if (realIdx !== -1) state.generic_ville_log.splice(realIdx, 1);
   }
 
-  // Rafraîchir call grid immédiatement
+  // Mettre à jour tous les compteurs immédiatement
+  const elVal  = document.getElementById('val-appel_naturel');
+  if (elVal)  elVal.textContent  = state.appel_naturel;
   const elCall = document.getElementById('callval-appel_naturel');
   if (elCall) elCall.textContent = state.appel_naturel;
 
