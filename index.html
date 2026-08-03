@@ -2454,6 +2454,7 @@ const FACEBOOK_ITEMS = [
   { key: 'rdv_dm_fb', label: 'RDV via DM FB envoyé', xp: 10 },
 ];
 const APPELS_ITEMS = [
+  { key: 'appel_naturel', label: 'Appel naturel', xp: 3 },
   { key: 'appel_naturel_rdv', label: 'Appel naturel — RDV pris', xp: 10 },
 ];
 
@@ -2766,6 +2767,18 @@ function buildGrid(items, gridId, villeEnabled) {
           <button class="counter-btn minus" onclick="removeLastPerdu()">−</button>
           <div class="counter-value" id="val-${item.key}">${state[item.key] || 0}</div>
           <button class="counter-btn plus" onclick="openPerduPopup()">+</button>
+        </div>`;
+      grid.appendChild(card);
+      return;
+    }
+
+    if (item.key === 'appel_naturel') {
+      card.innerHTML = `
+        <div class="counter-label">${item.label}</div>
+        <div class="counter-controls">
+          <button class="counter-btn minus" onclick="openNaturelDeletePopup()">−</button>
+          <div class="counter-value" id="val-${item.key}">${state[item.key] || 0}</div>
+          <button class="counter-btn plus" onclick="openNaturelResponsePopup(${item.xp})">+</button>
         </div>`;
       grid.appendChild(card);
       return;
@@ -3308,6 +3321,57 @@ function renderAppelsNaturelsStats() {
   }
 
   el.innerHTML = kpiHtml + barHtml + villeHtml + listeHtml;
+}
+
+function openNaturelDeletePopup() {
+  const log = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  const total = state.appel_naturel || 0;
+
+  if (total === 0) { showToast('Aucun appel naturel à supprimer'); return; }
+
+  // Si entrées dans le log → popup de sélection
+  if (log.length > 0) {
+    const existing = document.getElementById('naturel-delete-popup');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'naturel-delete-popup';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#0f1923;border:1px solid #1e2d42;border-radius:16px;padding:20px;max-width:380px;width:92%';
+    box.innerHTML = '<div style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:16px;color:#e2e8f0;margin-bottom:4px">Quel appel supprimer ?</div>' +
+      '<div style="font-size:11px;color:#4a6080;margin-bottom:14px">Selectionnez l\'entree a retirer</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">' +
+      log.map((e, i) => {
+        const v = ALL_VILLES.find(x => x.id === e.ville);
+        const label = v ? v.label : (e.ville || 'Ville inconnue');
+        const isDirect = e.reponse === 'direct';
+        return '<button onclick="deleteNaturelEntry(' + i + ');var p=document.getElementById(\'naturel-delete-popup\');if(p)p.remove()" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:var(--text)">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:14px">📞</span>' +
+          '<span style="font-weight:700;font-size:13px">📍 ' + label + '</span>' +
+          '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:' + (isDirect ? 'rgba(0,212,255,.15)' : 'rgba(245,158,11,.15)') + ';color:' + (isDirect ? '#00d4ff' : '#f59e0b') + '">' + (isDirect ? '⚡ Direct' : '🔁 Rappelé') + '</span>' +
+          '</div>' +
+          '<span style="color:#ef4444;font-weight:700;font-size:12px">✕</span>' +
+          '</button>';
+      }).join('') +
+      '</div><button onclick="var p=document.getElementById(\'naturel-delete-popup\');if(p)p.remove()" style="margin-top:12px;width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--muted);font-family:Rajdhani,sans-serif;cursor:pointer">Annuler</button>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  } else {
+    // Pas de log (ajouté via +/-) → décrémenter simplement
+    state.appel_naturel = Math.max(0, total - 1);
+    const el = document.getElementById('val-appel_naturel');
+    if (el) el.textContent = state.appel_naturel;
+    const elCall = document.getElementById('callval-appel_naturel');
+    if (elCall) elCall.textContent = state.appel_naturel;
+    updateAll();
+    saveStorage();
+    showToast('Appel naturel supprimé');
+  }
 }
 
 function deleteNaturelEntry(idx) {
