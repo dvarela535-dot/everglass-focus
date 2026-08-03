@@ -1920,7 +1920,7 @@
 </div>
 <!-- POPUP CLÔTURE JOURNÉE -->
 <div id="cloture-popup" onclick="if(event.target.id==='cloture-popup')closeCloturePopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#0f1923;border:1px solid #1e2d42;border-radius:20px;padding:24px;max-width:420px;width:92%;box-shadow:0 0 40px rgba(16,185,129,0.15)">
+  <div style="background:#0f1923;border:1px solid #1e2d42;border-radius:20px;padding:24px;max-width:460px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 0 40px rgba(16,185,129,0.15)">
     <div style="font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:800;color:#e2e8f0;margin-bottom:4px">🔒 Clôture de journée</div>
     <div style="font-size:12px;color:#4a6080;margin-bottom:20px">Vérifie que tout est bien saisi avant de fermer</div>
     <div id="cloture-checklist" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"></div>
@@ -5744,9 +5744,9 @@ function getClotureChecks() {
 
   return [
     { label: 'Leads entrants du jour', ok: leadsOk,      detail: leadsOk ? (state.leads_entrant||0)+' lead(s) saisi(s)' : 'Aucun lead entrant — pense à les saisir', tab: 'conv' },
-    { label: 'Bleus & Marrons',        ok: hasBleuMarron, detail: hasBleuMarron ? 'Au moins une ville remplie' : 'Aucune ville avec bleus/marrons', tab: 'gest' },
+    { label: 'Bleus & Marrons',        ok: hasBleuMarron, detail: hasBleuMarron ? 'Toutes les villes remplies' : 'Certaines villes n\'ont pas matin+soir remplis', tab: 'gest' },
     { label: 'Appels naturels complets', ok: natOk,       detail: natOk ? (natTotal === 0 ? 'Aucun appel naturel (OK)' : natTotal+' appel(s) bien tracé(s)') : (natTotal-natLog.length)+' appel(s) sans détail', tab: 'appels' },
-    { label: 'Remarques saisies',       ok: remarquesOk,  detail: remarquesOk ? 'Remarques enregistrées' : 'Aucune remarque saisie', tab: 'remarques' },
+    { label: 'Remarques (facultatif)',  ok: true,          detail: remarquesOk ? 'Remarques enregistrées ✓' : 'Non rempli — pas obligatoire', tab: 'remarques' },
   ];
 }
 
@@ -5765,9 +5765,19 @@ function renderClotureChecklist() {
   // ── 1. Leads entrants ──
   const leadsOk = (state.leads_entrant || 0) > 0;
   html += `<div style="padding:12px 14px;background:${leadsOk?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${leadsOk?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">${leadsOk?'✅':'❌'}</span>
-      <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${leadsOk?'#10b981':'#f87171'}">Leads entrants du jour</div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">${leadsOk?'✅':'❌'}</span>
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:14px;color:${leadsOk?'#10b981':'#f87171'}">Leads entrants du jour</div>
+      </div>
+      <button onclick="toggleAirtableHelp()" style="background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);border-radius:20px;padding:3px 10px;color:#00d4ff;font-size:11px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif">? Comment savoir</button>
+    </div>
+    <div id="airtable-help" style="display:none;margin-top:8px;padding:10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:11px;color:#94a3b8;line-height:1.7">
+      📋 <b style="color:#00d4ff">Dans Airtable → Vue tableur</b><br>
+      Applique ces filtres :<br>
+      &nbsp;• <b>DATE D'ENTRÉE</b> = <b>aujourd'hui</b><br>
+      &nbsp;• <b>SOURCE :</b> n'est pas vide<br>
+      Le nombre de lignes = tes leads entrants du jour.
     </div>
     <div style="margin-top:8px">
       <div style="${labelSmall}">Nombre de leads entrants</div>
@@ -5858,6 +5868,11 @@ function renderClotureChecklist() {
     confirmBtn.style.cursor = allOk2?'pointer':'not-allowed';
     confirmBtn.textContent = allOk2?'✅ CONFIRMER LA CLÔTURE':'⚠ Complète les points manquants';
   }
+}
+
+function toggleAirtableHelp() {
+  const el = document.getElementById('airtable-help');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function clotureSetLeads(val) {
