@@ -1914,10 +1914,22 @@
     <button class="day-nav-btn" id="day-next-btn" onclick="navigateDay(1)" title="Jour suivant">▶</button>
   </div>
   <div class="user-info">
+    <button id="cloture-btn" onclick="openCloturePopup()" title="Clôturer la journée" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:700;color:#10b981;font-family:'Rajdhani',sans-serif;letter-spacing:0.5px;transition:all 0.2s;display:none">🔒 Clôturer</button>
     <div class="user-badge" id="user-name-badge" style="cursor:pointer" onclick="openModal()">👤 <span id="display-name"></span></div>
     <button id="theme-toggle" onclick="toggleTheme()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:16px;line-height:1;color:#fff;transition:all 0.2s;" title="Mode jour/nuit">🌙</button>
   </div>
 </div>
+<!-- POPUP CLÔTURE JOURNÉE -->
+<div id="cloture-popup" onclick="if(event.target.id==='cloture-popup')closeCloturePopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#0f1923;border:1px solid #1e2d42;border-radius:20px;padding:24px;max-width:420px;width:92%;box-shadow:0 0 40px rgba(16,185,129,0.15)">
+    <div style="font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:800;color:#e2e8f0;margin-bottom:4px">🔒 Clôture de journée</div>
+    <div style="font-size:12px;color:#4a6080;margin-bottom:20px">Vérifie que tout est bien saisi avant de fermer</div>
+    <div id="cloture-checklist" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"></div>
+    <button id="cloture-confirm-btn" onclick="confirmerCloture()" style="width:100%;padding:12px;background:linear-gradient(135deg,#10b981,#059669);border:none;border-radius:12px;color:#fff;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:16px;cursor:pointer;letter-spacing:1px">✅ CONFIRMER LA CLÔTURE</button>
+    <button onclick="closeCloturePopup()" style="width:100%;margin-top:8px;padding:10px;background:transparent;border:1px solid #1e2d42;border-radius:12px;color:#4a6080;font-family:'Rajdhani',sans-serif;cursor:pointer">Plus tard</button>
+  </div>
+</div>
+
 <div id="day-edit-badge" class="day-edit-badge" onclick="goToToday()" title="Revenir à aujourd'hui">📝 Mode édition d'un jour passé — toucher pour revenir à aujourd'hui</div>
 
 <!-- LIENS À PARTAGER -->
@@ -4020,6 +4032,7 @@ function updateAll() {
   renderLeadsEntrantsFeedback();
   updateReactiviteBadge();
   renderAppelsNaturelsStats();
+  updateClotureBtn();
 }
 
 function updateReactiviteBadge() {
@@ -5700,6 +5713,112 @@ function cancelPerduPopup() {
   // NE PAS reset pendingPerduNote ici — il est utilisé dans perduAddVille() après
 }
 
+
+// ══════════════════ CLÔTURE JOURNÉE ══════════════════
+
+function getClotureChecks() {
+  const todayIso = getTodayIso();
+  // 1. Leads entrants
+  const leadsOk = (state.leads_entrant || 0) > 0;
+  // 2. Bleus/Marrons : au moins une ville avec bm ou mm > 0
+  const hasBleuMarron = ALL_VILLES.some(v =>
+    (state['bm_'+v.id]||0) > 0 || (state['mm_'+v.id]||0) > 0
+  );
+  // 3. Appels naturels : si > 0, tous doivent avoir direct/rappelé dans le log
+  const natTotal = state.appel_naturel || 0;
+  const natLog = (state.generic_ville_log || []).filter(e => e.key === 'appel_naturel');
+  const natOk = natTotal === 0 || natLog.length === natTotal;
+  // 4. Remarques
+  const todayEntry = getHistory().find(h => h.iso === todayIso);
+  const remarks = todayEntry?.remarks || JSON.parse(localStorage.getItem(lsKey('eg_remarks')) || '{}');
+  const remarquesOk = Object.values(remarks).some(v => v && v.toString().trim().length > 0);
+
+  return [
+    { label: 'Leads entrants du jour', ok: leadsOk,      detail: leadsOk ? (state.leads_entrant||0)+' lead(s) saisi(s)' : 'Aucun lead entrant — pense à les saisir', tab: 'conv' },
+    { label: 'Bleus & Marrons',        ok: hasBleuMarron, detail: hasBleuMarron ? 'Au moins une ville remplie' : 'Aucune ville avec bleus/marrons', tab: 'gest' },
+    { label: 'Appels naturels complets', ok: natOk,       detail: natOk ? (natTotal === 0 ? 'Aucun appel naturel (OK)' : natTotal+' appel(s) bien tracé(s)') : (natTotal-natLog.length)+' appel(s) sans détail', tab: 'appels' },
+    { label: 'Remarques saisies',       ok: remarquesOk,  detail: remarquesOk ? 'Remarques enregistrées' : 'Aucune remarque saisie', tab: 'remarques' },
+  ];
+}
+
+function openCloturePopup() {
+  if (viewingIso && viewingIso !== getTodayIso()) {
+    showToast('Clôture uniquement disponible pour aujourd\'hui');
+    return;
+  }
+  const checks = getClotureChecks();
+  const list = document.getElementById('cloture-checklist');
+  const allOk = checks.every(c => c.ok);
+
+  list.innerHTML = checks.map(c => `
+    <div onclick="closeCloturePopup();switchTab('${c.tab}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:${c.ok?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:1px solid ${c.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:12px;cursor:pointer">
+      <span style="font-size:20px">${c.ok?'✅':'❌'}</span>
+      <div style="flex:1">
+        <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;color:${c.ok?'#10b981':'#f87171'}">${c.label}</div>
+        <div style="font-size:11px;color:#4a6080;margin-top:2px">${c.detail}</div>
+      </div>
+      ${!c.ok?'<span style="font-size:11px;color:#4a6080">→</span>':''}
+    </div>`).join('');
+
+  const confirmBtn = document.getElementById('cloture-confirm-btn');
+  if (confirmBtn) {
+    confirmBtn.disabled = !allOk;
+    confirmBtn.style.opacity = allOk ? '1' : '0.4';
+    confirmBtn.style.cursor = allOk ? 'pointer' : 'not-allowed';
+    confirmBtn.textContent = allOk ? '✅ CONFIRMER LA CLÔTURE' : '⚠ Complète les points manquants';
+  }
+
+  const pop = document.getElementById('cloture-popup');
+  if (pop) { pop.style.display = 'flex'; }
+}
+
+function closeCloturePopup() {
+  const pop = document.getElementById('cloture-popup');
+  if (pop) pop.style.display = 'none';
+}
+
+function confirmerCloture() {
+  const checks = getClotureChecks();
+  if (!checks.every(c => c.ok)) return;
+
+  state.journeeCloturee = true;
+  saveStorage();
+
+  // Mettre à jour le bouton
+  updateClotureBtn();
+  closeCloturePopup();
+  showToast('🔒 Journée clôturée — bien joué !');
+
+  // Push Firebase pour que l'admin le voit
+  if (db && currentIdentity) {
+    const todayIso = getTodayIso();
+    db.collection('commerciaux').doc(currentIdentity).collection('jours').doc(todayIso)
+      .set({ cloturee: true, clotureAt: new Date().toISOString() }, { merge: true })
+      .catch(() => {});
+  }
+}
+
+function updateClotureBtn() {
+  const btn = document.getElementById('cloture-btn');
+  if (!btn) return;
+  const isTodayView = !viewingIso || viewingIso === getTodayIso();
+  if (!isTodayView) { btn.style.display = 'none'; return; }
+  btn.style.display = 'block';
+  if (state.journeeCloturee) {
+    btn.textContent = '🔒 Clôturée';
+    btn.style.background = 'rgba(16,185,129,0.25)';
+    btn.style.borderColor = '#10b981';
+    btn.style.color = '#10b981';
+    btn.onclick = () => showToast('Journée déjà clôturée');
+  } else {
+    btn.textContent = '🔒 Clôturer';
+    btn.style.background = 'rgba(16,185,129,0.1)';
+    btn.style.borderColor = 'rgba(16,185,129,0.4)';
+    btn.style.color = '#10b981';
+    btn.onclick = openCloturePopup;
+  }
+}
+
 // ══════════════════ RAPPORT / SUPPORT BRIEF ══════════════════
 
 let reportWeekOffset = 0;
@@ -6647,6 +6766,7 @@ function subscribeToAllCommercials(names) {
         adminCommerciauxData[name].state = doc.exists ? doc.data().state : null;
         adminCommerciauxData[name].xp = doc.exists ? (doc.data().xp || 0) : 0;
         adminCommerciauxData[name].rdv = doc.exists ? (doc.data().rdv || 0) : 0;
+        adminCommerciauxData[name].cloturee = doc.exists ? (doc.data().cloturee || false) : false;
         updateAdminCard(name);
         updateTeamCard();
         // Si la vue team full view est active, resynchroniser l'état agrégé
@@ -6709,6 +6829,7 @@ function renderBleuMarronAdminRows(s) {
 
 function adminCardHTML(name, d) {
   const isLive = d.lastSeen && (Date.now() - new Date(d.lastSeen).getTime()) < 10 * 60 * 1000;
+  const isCloturee = d.cloturee || (d.state && d.state.journeeCloturee) || false;
   const s = d.state || {};
   const rdv = d.rdv || computeRdvTotal(s) || 0;
   const appels = (s.leads_appeles || 0) + (s.appel_naturel || 0);
@@ -6719,7 +6840,7 @@ function adminCardHTML(name, d) {
 
   return `<div class="admin-card ${isLive ? 'live' : 'admin-card-offline'}" id="acard-${name.replace(/\s/g,'_')}" onclick="openAnalysisPanel('${name.replace(/'/g,"\\'")}')">
     <div class="admin-card-avatar">${d.avatar || '🦁'}</div>
-    <div class="admin-card-name"><span class="admin-card-live"></span>${name}</div>
+    <div class="admin-card-name"><span class="admin-card-live"></span>${name}${isCloturee ? ' <span style="font-size:12px;color:#10b981">🔒</span>' : ''}</div>
     <div class="admin-card-stats">
       <div class="admin-card-stat"><span>RDV</span><b style="color:var(--green)">${rdv}</b></div>
       <div class="admin-card-stat"><span>Appels</span><b>${appels}</b></div>
