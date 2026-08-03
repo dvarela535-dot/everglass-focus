@@ -3167,6 +3167,51 @@ function renderAnnulationsList() {
   `).join('') + `</div>`;
 }
 
+function fixAllNonPrecisPerdu() {
+  // Créer un popup avec les vrais PERDU_TYPES
+  const existing = document.getElementById('fix-perdu-popup');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'fix-perdu-popup';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#0f1923;border:1px solid #1e2d42;border-radius:16px;padding:20px;max-width:360px;width:90%';
+  box.innerHTML = '<div style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:16px;color:#e2e8f0;margin-bottom:4px">Quel motif pour les perdus ?</div>' +
+    '<div style="font-size:11px;color:#4a6080;margin-bottom:14px">Sélectionne le motif — tous les "Non précisé" seront corrigés</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+    PERDU_TYPES.map((_t,_i) => '<button data-pi="'+_i+'" onclick="applyFixPerduType(PERDU_TYPES[+this.dataset.pi])" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);border-radius:8px;padding:8px 10px;color:#f87171;font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;cursor:pointer;text-align:left">' + _t + '</button>').join('') +
+    '</div><button onclick="var p=document.getElementById(\'fix-perdu-popup\');if(p)p.remove()" style="margin-top:12px;width:100%;background:transparent;border:1px solid #1e2d42;border-radius:8px;padding:8px;color:#4a6080;font-family:Rajdhani,sans-serif;cursor:pointer">Annuler</button>';
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function applyFixPerduType(motif) {
+  document.getElementById('fix-perdu-popup').remove();
+  const isNP = n => !n || n === 'Non précisé' || n === 'Non precise' || n === 'Motif non précisé';
+
+  if (state.perdu_log) {
+    state.perdu_log = state.perdu_log.map(e => isNP(e.note) ? {...e, note: motif} : e);
+  }
+
+  const history = getHistory();
+  history.forEach(h => {
+    if (h.state && h.state.perdu_log) {
+      h.state.perdu_log = h.state.perdu_log.map(e => isNP(e.note) ? {...e, note: motif} : e);
+    }
+  });
+  try { localStorage.setItem(lsKey('eg_history'), JSON.stringify(history)); } catch(e2) {}
+
+  saveStorage();
+  renderPerdusList();
+  showToast('Motifs mis à jour : ' + motif);
+  const zone = document.getElementById('rapport-content');
+  if (zone && zone.innerHTML.length > 100) generateReport();
+}
+
 function editPerduType(oldType, villes) {
   // Ouvre un prompt pour modifier le motif de tous les perdus de ce type aujourd'hui
   const newMotif = window.prompt('Modifier le motif "' + oldType + '" :', oldType);
@@ -5809,7 +5854,15 @@ function generateReport() {
     ? '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px;margin-bottom:12px">'+
       '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:'+RED+';margin-bottom:8px">❌ Motifs de perte — total : '+totalPerdus+'</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
-      perduEntries.map(([k,v]) => '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;font-size:11px;color:'+TEXT+'"><span style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:13px;color:'+RED+'">'+v+'x</span> '+k+'</div>').join('')+
+      perduEntries.map(([k,v]) => {
+        const isNonPrecise = k === 'Non precise' || k === 'Non précisé' || k === 'Motif non précisé';
+        const tag = '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;font-size:11px;color:'+TEXT+';'+(isNonPrecise?'cursor:pointer;border-style:dashed;':'')+'"'+
+          (isNonPrecise ? ' onclick="fixAllNonPrecisPerdu()" title="Cliquer pour corriger les motifs"' : '')+'>'+
+          '<span style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:13px;color:'+RED+'">'+v+'x</span> '+k+
+          (isNonPrecise ? ' ✏️' : '')+
+          '</div>';
+        return tag;
+      }).join('')+
       '</div></div>'
     : '';
   const analyseHtml = '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px">'+
