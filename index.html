@@ -5815,10 +5815,8 @@ function updateClotureBtn() {
     btn.style.color = '#10b981';
     btn.onclick = () => showToast('Journée déjà clôturée');
   } else {
-    btn.textContent = '🔒 Clôturer';
-    btn.style.background = 'rgba(16,185,129,0.1)';
-    btn.style.borderColor = 'rgba(16,185,129,0.4)';
-    btn.style.color = '#10b981';
+    btn.innerHTML = '🔒 Clôturer la journée';
+    btn.style.cssText += ';display:block;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;box-shadow:0 4px 20px rgba(16,185,129,0.4);cursor:pointer';
     btn.onclick = openCloturePopup;
   }
 }
