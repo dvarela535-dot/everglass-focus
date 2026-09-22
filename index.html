@@ -2402,9 +2402,10 @@
 <div id="annulation-popup" onclick="if(event.target.id==='annulation-popup') cancelAnnulationPopup()">
   <div class="leadcat-box">
     <h3>❌ Pourquoi ce RDV est annulé ?</h3>
-    <textarea id="annulation-reason-input" rows="3" placeholder="Note : client, motif..." style="width:100%;box-sizing:border-box;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:15px;resize:vertical;margin-bottom:14px;"></textarea>
-    <div class="leadcat-grid" style="grid-template-columns:1fr;">
-      <button class="leadcat-btn red" onclick="openAnnulationVillePopup()">Continuer →</button>
+    <div class="leadcat-grid" id="annulation-type-list"></div>
+    <div id="annulation-autre-zone" style="display:none;margin-top:10px">
+      <textarea id="annulation-autre-input" rows="2" placeholder="Précise le motif..." style="width:100%;box-sizing:border-box;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:14px;resize:vertical;margin-bottom:8px;"></textarea>
+      <button class="leadcat-btn red" onclick="selectAnnulationType('Autre: ' + document.getElementById('annulation-autre-input').value)">Continuer →</button>
     </div>
     <button class="leadcat-cancel" onclick="cancelAnnulationPopup()">Annuler</button>
   </div>
@@ -2504,7 +2505,7 @@ const CALL_BUTTONS = [
   { key: 'leads_appeles', icon: '📋', name: 'Lead appelé', cls: 'cyan' },
   { key: 'jamais_repondu', icon: '🟨', name: 'Jamais répondu', cls: 'yellow' },
   { key: 'perdu', icon: '🔴', name: 'Perdu', cls: 'red-btn' },
-  { key: 'recommandation', icon: '⭐', name: 'Recommandation', cls: 'purple' },
+  { key: 'docs_recup', icon: '📄', name: 'Docs récup', cls: 'purple', direct: true },
   { key: 'rdv_fixe', icon: '💰', name: 'RDV FIXÉ', cls: 'rdv-fixe-mega' },
   { key: 'rdv_2eme', icon: '🚗', name: '2ème voiture', cls: 'orange' },
   { key: 'autres_villes', icon: '📍', name: 'Autre ville', cls: 'gray' },
@@ -2921,6 +2922,15 @@ function cancelLeadVillePopup() {
 // ── PERDU + POURQUOI — POPUP MOTIF + VILLE ────────────────────
 let pendingPerduNote = '';
 
+const ANNULATION_TYPES = [
+  'Détourné par l\'assurance',
+  'Vendu la voiture',
+  'A déjà fait changer',
+  'Va ailleurs',
+  'Pas le budget',
+  'Veut plus venir',
+];
+
 const PERDU_TYPES = [
   'Offre',
   'Pas la bonne personne',
@@ -3105,19 +3115,29 @@ function deletePerduEntry(index) {
 let pendingAnnulationNote = '';
 
 function openAnnulationPopup() {
-  const ta = document.getElementById('annulation-reason-input');
-  if (ta) ta.value = '';
+  const list = document.getElementById('annulation-type-list');
+  if (list) {
+    list.innerHTML = ANNULATION_TYPES.map(t =>
+      `<button class="leadcat-btn red" onclick="selectAnnulationType('${t.replace(/'/g, "\'")}')">${t}</button>`
+    ).join('') + '<button class="leadcat-btn gray" onclick="document.getElementById(\'annulation-autre-zone\').style.display=\'block\'" style="grid-column:span 2">✏️ Autre motif</button>';
+  }
+  const zone = document.getElementById('annulation-autre-zone');
+  if (zone) zone.style.display = 'none';
   document.getElementById('annulation-popup').classList.add('open');
+}
+
+function selectAnnulationType(type) {
+  pendingAnnulationNote = type;
+  cancelAnnulationPopup();
+  openAnnulationVillePopupDirect();
 }
 
 function cancelAnnulationPopup() {
   document.getElementById('annulation-popup').classList.remove('open');
+  // Ne PAS reset pendingAnnulationNote ici
 }
 
-function openAnnulationVillePopup() {
-  const ta = document.getElementById('annulation-reason-input');
-  pendingAnnulationNote = ta ? ta.value.trim() : '';
-  cancelAnnulationPopup();
+function openAnnulationVillePopupDirect() {
   const list = document.getElementById('annulation-ville-list');
   const active = getActiveVilles();
   list.innerHTML = active.map(id => {
@@ -3943,6 +3963,16 @@ function buildCallGrid() {
       el.onclick = () => {
         if (btn.key === 'leads_appeles') toggleLeadCatPopup();
         else if (btn.key === 'perdu') openPerduPopup();
+        else if (btn.key === 'annulation') openAnnulationPopup();
+        else if (btn.direct) {
+          // Boutons directs sans popup ville (ex: docs_recup)
+          const xpVal = [...CONVERSION_ITEMS, ...GESTION_ITEMS, ...FACEBOOK_ITEMS, ...APPELS_ITEMS].find(i => i.key === btn.key)?.xp || 3;
+          change(btn.key, 1, xpVal);
+          const valEl = document.getElementById('callval-'+btn.key);
+          if (valEl) valEl.textContent = state[btn.key] || 0;
+          const card = document.getElementById('callbtn-'+btn.key);
+          if (card) { card.classList.remove('call-flash'); void card.offsetWidth; card.classList.add('call-flash'); }
+        }
         else {
           const xpVal = [...CONVERSION_ITEMS, ...GESTION_ITEMS, ...FACEBOOK_ITEMS, ...APPELS_ITEMS].find(i => i.key === btn.key)?.xp || 5;
           openGenericVillePopup(btn.key, xpVal, btn.name);
@@ -5911,14 +5941,18 @@ function clotureSetLeads(val) {
   state.leads_entrant = Math.max(0, val||0);
   const el = document.getElementById('val-leads_entrant');
   if (el) el.textContent = state.leads_entrant;
+  updateAll();
   saveStorage();
   renderClotureChecklist();
 }
 
 function clotureSetBM(prefix, villeId, val) {
   state[prefix+'_'+villeId] = Math.max(0, val||0);
+  updateAll();
   saveStorage();
 }
+
+
 
 function clotureSetRemarque(val) {
   let remarks = {};
@@ -6151,6 +6185,7 @@ function generateReport() {
   const totalRdv    = data.reduce((a,d) => a + d.rdv, 0);
   const totalAppels = data.reduce((a,d) => a + d.appels, 0);
   const totalPerdus = data.reduce((a,d) => a + d.perdus, 0);
+  const totalAnnul  = data.reduce((a,d) => a + (d.s ? (d.s.annulation||0) : 0), 0);
   const totalClients = tot('rdv_leads') + tot('rdv_slacks') + tot('rdv_aappeler') + tot('rdv_gris') + tot('rdv_violet') + tot('rdv_stocks') + tot('rdv_2eme') + tot('rdv_msg_fb') + tot('rdv_dm_fb') + tot('appel_naturel_rdv');
   const ratios = computeRatiosMoyenne(data);
   const ratioStr = ratios.moyenne !== null ? ratios.moyenne.toFixed(1) : '\u2014';
@@ -6175,6 +6210,14 @@ function generateReport() {
   const perduByType = {};
   data.forEach(d => d.perdu_log.forEach(e => { const k = e.note || 'Non precise'; perduByType[k]=(perduByType[k]||0)+1; }));
   const perduEntries = Object.entries(perduByType).sort((a,b)=>b[1]-a[1]);
+  // Annulations par motif
+  const annulByType = {};
+  data.forEach(d => (d.s && d.s.annulation_log ? d.s.annulation_log : []).forEach(e => {
+    const k = e.note || 'Non précisé';
+    const key = (e.ville ? e.ville+' — ' : '') + k;
+    annulByType[key] = (annulByType[key]||0)+1;
+  }));
+  const annulEntries = Object.entries(annulByType).sort((a,b)=>b[1]-a[1]);
   const joursActifs = data.filter(d=>d.actif).length || 1;
   const moy = (totalRdv/joursActifs).toFixed(1);
   let analyse = '';
@@ -6362,6 +6405,15 @@ function generateReport() {
       }).join('')+
       '</div></div>'
     : '';
+  // Section annulations par motif
+  const annulHtml = annulEntries.length > 0
+    ? '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px;margin-bottom:12px">'+
+      '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#f97316;margin-bottom:8px">🚫 Annulations par motif — total : '+totalAnnul+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:5px">'+
+      annulEntries.map(([k,v]) => '<div style="background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);border-radius:8px;padding:4px 10px;font-size:11px;color:'+TEXT+'"><span style="font-family:Rajdhani,sans-serif;font-weight:800;font-size:13px;color:#f97316">'+v+'x</span> '+k+'</div>').join('')+
+      '</div></div>'
+    : '';
+
   const analyseHtml = '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:12px">'+
     '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:'+ACC+';margin-bottom:6px">🔍 Analyse</div>'+
     '<div style="font-size:12px;color:'+TEXT+';line-height:1.7;border-left:3px solid '+ACC+';padding-left:10px">'+analyse+'</div></div>';
@@ -6374,7 +6426,7 @@ function generateReport() {
   const html = '<div id="rapport-printable" style="font-family:Rajdhani,sans-serif;background:'+BG+';color:'+TEXT+';padding:20px;min-height:100vh">'+
     hdr + kpi + glow + sep('⚡ Conversion', ACC) + tConv + glow + sep('🛠 Gestion', PUR) + tGest +
 
-    glow + recordHtml + perduHtml + analyseHtml + '</div>';
+    glow + recordHtml + perduHtml + annulHtml + analyseHtml + '</div>';
   const zone = document.getElementById('rapport-content');
   if (zone) zone.innerHTML = html;
   const reports = getReportHistory();
