@@ -5050,6 +5050,54 @@ function bootApp() {
   document.getElementById('xp-val').textContent = xp;
   renderHistory();
   loadRemarks();
+  // Sync historique Firebase → localStorage au démarrage (pour avoir les données de tous les devices)
+  if (currentIdentity && currentIdentity !== '__admin__' && db) {
+    syncFirebaseHistoryToLocal(currentIdentity);
+  }
+}
+
+async function syncFirebaseHistoryToLocal(name) {
+  try {
+    const snap = await db.collection('commerciaux').doc(name).collection('jours').get();
+    if (snap.empty) return;
+    let localHistory = getHistory();
+    let changed = false;
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.state) return;
+      const iso = d.id;
+      const existing = localHistory.find(h => h.iso === iso);
+      const dt = new Date(iso);
+      const entry = {
+        iso, date: iso,
+        year: dt.getFullYear(), month: dt.getMonth(), week: getWeekNumber(dt),
+        state: data.state, xp: data.xp || 0,
+        rdv: data.rdv !== undefined ? data.rdv : computeRdvTotal(data.state),
+        remarks: data.remarks || {}
+      };
+      if (!existing) {
+        localHistory.push(entry);
+        changed = true;
+      } else if (data.xp > (existing.xp || 0) || JSON.stringify(data.state) !== JSON.stringify(existing.state)) {
+        // Firebase plus récent → on merge (Firebase = source de vérité)
+        const idx = localHistory.indexOf(existing);
+        localHistory[idx] = { ...existing, ...entry };
+        changed = true;
+      }
+    });
+    if (changed) {
+      localHistory.sort((a, b) => (b.iso || '').localeCompare(a.iso || ''));
+      if (localHistory.length > 90) localHistory.length = 90;
+      localStorage.setItem('eg_history', JSON.stringify(localHistory));
+      // Re-render rapport/bilan si déjà ouvert
+      const bilanEl = document.getElementById('ac-evaluation');
+      if (bilanEl) renderACEvaluation();
+      renderHistory();
+      console.log('[EverGlass] Historique Firebase synced:', localHistory.length, 'jours');
+    }
+  } catch(e) {
+    console.warn('[EverGlass] Sync Firebase history échoué:', e);
+  }
 }
 
 initFirebase();
