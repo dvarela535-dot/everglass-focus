@@ -6221,6 +6221,18 @@ function generateReport() {
   const annulEntries = Object.entries(annulByType).sort((a,b)=>b[1]-a[1]);
   const joursActifs = data.filter(d=>d.actif).length || 1;
   const moy = (totalRdv/joursActifs).toFixed(1);
+  // Répartition des RDV par ville
+  const villeRdvMap = {};
+  data.forEach(d => {
+    if (!d.s) return;
+    ALL_VILLES.forEach(v => {
+      villeRdvMap[v.id] = (villeRdvMap[v.id] || 0) + (d.s['ville_' + v.id] || 0);
+    });
+  });
+  const villeRdvList = ALL_VILLES.map(v => ({ label: v.label, val: villeRdvMap[v.id] || 0 })).filter(x => x.val > 0).sort((a,b)=>b.val-a.val);
+  const villeRdvHtml = villeRdvList.length > 0
+    ? '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;justify-content:center">' + villeRdvList.map(x => '<span style="font-size:9px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:2px 6px;color:#10b981;font-weight:700">'+x.label+' <b>'+x.val+'</b></span>').join('') + '</div>'
+    : '';
   let analyse = '';
   if (totalRdv === 0) {
     analyse = 'Aucun RDV enregistre cette periode.';
@@ -6304,7 +6316,7 @@ function generateReport() {
     '<div style="font-size:9px;color:'+GRN+'">💬 Slack : '+r3Str+'</div></div>'+
     '</div>'+
     '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
-    '<div style="font-size:16px">🎯</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+GRN+'">'+totalRdv+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">RDV Total</div></div>'+
+    '<div style="font-size:16px">🎯</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+GRN+'">'+totalRdv+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">RDV Total</div>'+villeRdvHtml+'</div>'+
     '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
     '<div style="font-size:16px">📞</div><div style="font-family:Rajdhani,sans-serif;font-size:28px;font-weight:800;color:'+ACC+'">'+totalAppels+'</div><div style="font-size:9px;color:'+MUTED+';font-weight:600;text-transform:uppercase">Appels</div></div>'+
     '<div style="background:'+SURF+';border:1px solid '+BOR+';border-radius:12px;padding:14px;text-align:center">'+
