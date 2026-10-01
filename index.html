@@ -6230,8 +6230,12 @@ function generateReport() {
     });
   });
   const villeRdvList = ALL_VILLES.map(v => ({ label: v.label, val: villeRdvMap[v.id] || 0 })).filter(x => x.val > 0).sort((a,b)=>b.val-a.val);
-  const villeRdvHtml = villeRdvList.length > 0
-    ? '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;justify-content:center">' + villeRdvList.map(x => '<span style="font-size:9px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:2px 6px;color:#10b981;font-weight:700">'+x.label+' <b>'+x.val+'</b></span>').join('') + '</div>'
+  const villeRdvAttribue = villeRdvList.reduce((a,x)=>a+x.val,0);
+  const villeRdvNonAttribue = totalRdv - villeRdvAttribue;
+  const villeRdvAll = [...villeRdvList];
+  if (villeRdvNonAttribue > 0) villeRdvAll.push({ label: 'Non attribué', val: villeRdvNonAttribue, gray: true });
+  const villeRdvHtml = villeRdvAll.length > 0
+    ? '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;justify-content:center">' + villeRdvAll.map(x => '<span style="font-size:9px;background:'+(x.gray?'rgba(100,116,139,.12)':'rgba(16,185,129,.12)')+';border:1px solid '+(x.gray?'rgba(100,116,139,.25)':'rgba(16,185,129,.25)')+';border-radius:6px;padding:2px 6px;color:'+(x.gray?'#64748b':'#10b981')+';font-weight:700">'+x.label+' <b>'+x.val+'</b></span>').join('') + '</div>'
     : '';
   let analyse = '';
   if (totalRdv === 0) {
